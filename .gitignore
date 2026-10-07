@@ -1,0 +1,19 @@
+# secrets & local config
+.env
+
+# local data: your recordings, transcripts and practice history stay on your machine
+data/
+*.db
+sessions.json
+
+# python
+__pycache__/
+*.pyc
+.venv*/
+venv/
+.pytest_cache/
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/

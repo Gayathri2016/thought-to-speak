@@ -1,0 +1,4 @@
+# Optional: free, offline verbatim transcription with word timestamps.
+# First use downloads the model (base.en ≈ 140 MB). Not needed if OPENAI_API_KEY is set.
+-r requirements.txt
+faster-whisper>=1.0

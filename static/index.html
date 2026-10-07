@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thought → Speak</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">T→S</div>
+      <div>
+        <h1>Thought → Speak</h1>
+        <p>Speak → Analyze → Retry → Compare. Become the speaker, not the prompt-copier.</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <span id="providerBadge" class="badge" title="Analysis engine">…</span>
+      <button id="themeBtn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">☾</button>
+    </div>
+  </div>
+  <nav class="wrap tabs" role="tablist">
+    <button class="tab active" data-tab="learn" role="tab">📚 Learn</button>
+    <button class="tab" data-tab="practice" role="tab">🎙️ Practice</button>
+    <button class="tab" data-tab="progress" role="tab">📈 Progress</button>
+    <button class="tab" data-tab="history" role="tab">🗂️ History</button>
+  </nav>
+</header>
+
+<main class="wrap">
+  <!-- ============================== PRACTICE ============================== -->
+  <section id="tab-learn" class="tabpanel">
+    <div id="learnHome">
+      <div class="card today-card">
+        <div class="row between wrap-row">
+          <div>
+            <span class="eyebrow">Today's session</span>
+            <div class="today-title" id="todayTitle">Your daily practice</div>
+          </div>
+          <div class="today-progress" id="todayProgress"></div>
+        </div>
+        <div id="todayItems" class="today-items"></div>
+      </div>
+      <div class="card">
+        <div class="row between wrap-row">
+          <div>
+            <span class="eyebrow">Journey</span>
+            <div class="card-h" id="journeyTitle" style="margin:2px 0 4px"></div>
+            <p class="muted small" id="journeyDesc" style="margin:0"></p>
+          </div>
+          <div class="journey-meter"><div class="jm-bar"><div id="journeyFill"></div></div><span id="journeyCount" class="small"></span></div>
+        </div>
+        <div id="journeyModules"></div>
+      </div>
+    </div>
+
+    <article id="lessonView" class="hidden">
+      <button class="ghost sm" id="backToJourney">← Journey</button>
+      <div class="lesson-grid">
+        <div class="col">
+          <div class="card">
+            <span class="eyebrow" id="lessonEyebrow"></span>
+            <h2 class="lesson-title" id="lessonTitle"></h2>
+            <p class="lead" id="lessonSummary"></p>
+            <div id="lessonConcept" class="concept"></div>
+          </div>
+          <div class="card">
+            <div class="card-h">Example</div>
+            <p class="ex-prompt" id="exPrompt"></p>
+            <div class="ex-grid">
+              <div class="ex before"><span class="eyebrow">Before</span><p id="exBefore"></p></div>
+              <div class="ex after"><span class="eyebrow">After</span><p id="exAfter"></p></div>
+            </div>
+            <p class="small"><b>Why it works:</b> <span id="exWhy"></span></p>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card fw-card">
+            <span class="eyebrow">Framework</span>
+            <div class="fw-name" id="fwName"></div>
+            <ol id="fwSteps" class="fw-steps"></ol>
+          </div>
+          <div class="card">
+            <div class="card-h">Cheat sheet</div>
+            <ul id="cheatSheet" class="cheat"></ul>
+          </div>
+          <div class="card exercise-card">
+            <span class="eyebrow">Your turn</span>
+            <p id="exInstructions" style="font-weight:600;margin:4px 0 8px"></p>
+            <p class="small"><b>Constraint:</b> <span id="exConstraint"></span></p>
+            <div class="small"><b>To pass:</b><ul id="exPass" class="pass-list"></ul></div>
+            <label class="small muted" for="exPromptSelect">Prompt</label>
+            <select id="exPromptSelect" class="full"></select>
+            <div class="row gap-s wrap-row" style="margin-top:12px">
+              <button class="primary" id="practiceLessonBtn">🎙️ Practice this lesson</button>
+              <span id="lessonProgressNote" class="small muted"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section id="tab-practice" class="tabpanel hidden">
+    <div id="recBanner" class="banner hidden"></div>
+
+    <div class="grid2">
+      <!-- left: prompt + recorder -->
+      <div class="col">
+        <div class="card">
+          <div class="card-h"><span class="step">1</span> Choose a scenario</div>
+          <div id="modeChips" class="chips" role="radiogroup"></div>
+          <div class="prompt-box">
+            <div class="row between">
+              <span class="eyebrow">Your prompt</span>
+              <div class="row gap-s">
+                <button id="newPromptBtn" class="ghost sm">↻ New prompt</button>
+                <button id="customPromptBtn" class="ghost sm">✎ Custom</button>
+              </div>
+            </div>
+            <div id="promptText" class="prompt-text"></div>
+            <textarea id="promptEdit" class="hidden" rows="2" maxlength="1000"
+                      placeholder="Type your own question or topic…"></textarea>
+            <div class="row gap-s wrap-row">
+              <span class="muted small">Framework:</span>
+              <span id="frameworkPills" class="pills"></span>
+              <span id="targetTime" class="muted small"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h row between">
+            <span><span class="step">2</span> Speak <span id="takeLabel" class="take">Take 1</span></span>
+            <span id="timer" class="timer" aria-live="off">0:00</span>
+          </div>
+          <div class="timebar" aria-hidden="true"><div id="timeFill"></div><div id="timeTarget"></div></div>
+
+          <div class="row gap-s wrap-row" style="margin:14px 0 10px">
+            <button id="recordBtn" class="record">● Start speaking</button>
+            <button id="analyzeBtn" class="primary">Analyze</button>
+            <button id="clearBtn" class="ghost">Clear</button>
+          </div>
+          <div class="mic-row">
+            <span class="mic-label" id="micLabel">🎤 Mic off</span>
+            <div class="level" aria-hidden="true"><div id="levelFill"></div></div>
+            <span class="small muted" id="audioLen"></span>
+          </div>
+          <div id="interim" class="interim hidden"></div>
+          <textarea id="transcript" rows="8"
+            placeholder="Press “Start speaking” and talk naturally — don't script it. You can also type or paste."></textarea>
+          <div class="row between wrap-row" style="margin-top:10px">
+            <label class="switch">
+              <input type="checkbox" id="challenge">
+              <span class="slider" aria-hidden="true"></span>
+              <span><b>Challenge Mode</b> <span class="muted small">— coaching questions only, no rewritten answer</span></span>
+            </label>
+            <span id="status" class="muted small" aria-live="polite"></span>
+          </div>
+        </div>
+
+        <div id="previousTakeCard" class="card hidden">
+          <details>
+            <summary><b>Previous take</b> <span class="muted small">(peek only if you're stuck)</span></summary>
+            <p id="previousTakeText" class="transcript-quote"></p>
+          </details>
+        </div>
+      </div>
+
+      <!-- right: coaching -->
+      <div class="col">
+        <div class="card" id="resultsCard">
+          <div class="card-h"><span class="step">3</span> Coaching</div>
+          <div id="emptyState" class="empty">
+            <div class="empty-icon">🎙️</div>
+            <p>Answer the prompt out loud, then hit <b>Analyze</b>.</p>
+            <p class="muted small">You'll get scores on structure, clarity, relevance, answer quality and delivery —
+              then retry and compare.</p>
+          </div>
+
+          <div id="results" class="hidden">
+            <div id="warning" class="warn hidden"></div>
+            <div id="lessonResult" class="lesson-result hidden"></div>
+            <div class="score-row">
+              <div class="ring" id="ring" role="img" aria-label="Overall score">
+                <svg viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/>
+                  <circle class="ring-fg" id="ringFg" cx="60" cy="60" r="52"/></svg>
+                <div class="ring-label"><b id="overall">0</b><span>/100</span></div>
+              </div>
+              <div class="dims" id="dims"></div>
+            </div>
+
+            <div class="metrics" id="metrics"></div>
+            <div id="fillerChips" class="chips small-chips"></div>
+
+            <div id="voiceCard" class="voice hidden">
+              <div class="row between wrap-row">
+                <h3 style="margin:0">🎧 Your voice <span class="small muted">— measured from the recording</span></h3>
+                <span id="transcriptSource" class="tag"></span>
+              </div>
+              <div id="waveform" class="waveform" title="Click to play from here"></div>
+              <div class="wave-legend small muted">
+                <span><i class="lg natural"></i>pause &lt; 1s</span><span><i class="lg long"></i>1–2.5s</span><span><i class="lg stall"></i>stall &gt; 2.5s</span>
+              </div>
+              <audio id="player" controls preload="none"></audio>
+              <div class="voice-grid">
+                <div id="voiceBars" class="dims"></div>
+                <div>
+                  <div class="eyebrow">Pace every 10 s</div>
+                  <div id="paceChart" class="mini-chart"></div>
+                  <div class="eyebrow" style="margin-top:8px">Pitch contour</div>
+                  <div id="pitchChart" class="mini-chart"></div>
+                </div>
+              </div>
+              <p id="voiceSummary" class="small"></p>
+              <p id="voiceQuality" class="warn hidden"></p>
+            </div>
+
+            <div class="split">
+              <div><h3>✅ What worked</h3><ul id="strengths"></ul></div>
+              <div><h3>🎯 What to improve</h3><ul id="improvements"></ul></div>
+            </div>
+
+            <h3>🧱 Structure check</h3>
+            <div id="structureMap" class="smap"></div>
+
+            <div id="coachBox" class="coach">
+              <div class="coach-h" id="coachTitle">Coach</div>
+              <p id="coachHint"></p>
+              <ol id="coachQuestions"></ol>
+              <div id="outlineWrap" class="hidden">
+                <div class="eyebrow">Skeleton built from your own words</div>
+                <ul id="outline"></ul>
+              </div>
+            </div>
+
+            <div class="next">
+              <span class="eyebrow">Next challenge</span>
+              <p id="nextChallenge"></p>
+              <div class="row gap-s wrap-row">
+                <button id="retryBtn" class="primary">🔁 Retry this prompt</button>
+                <button id="freshBtn" class="ghost">New prompt</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="compareCard">
+          <div class="card-h row between">
+            <span>🔁 Compare takes</span>
+            <span id="verdict" class="verdict"></span>
+          </div>
+          <p id="compareSummary" class="lead"></p>
+          <div id="takesSpark" class="takes-spark"></div>
+          <table class="ctable" id="compareTable"></table>
+          <div class="split">
+            <div><h3>Got better</h3><ul id="cmpBetter"></ul></div>
+            <div><h3>Still to work on</h3><ul id="cmpWorse"></ul></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== PROGRESS ============================== -->
+  <section id="tab-progress" class="tabpanel hidden">
+    <div id="recCard" class="card rec-card"></div>
+    <div id="kpis" class="kpis"></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h">Overall score over time</div>
+        <div id="trendChart" class="chart"></div>
+        <p class="muted small">Each dot is one take. Hollow dots are retries.</p>
+      </div>
+      <div class="card">
+        <div class="card-h">Skills — last 10 vs previous 10</div>
+        <div id="dimChart" class="chart"></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h">By scenario</div>
+        <table class="ptable" id="modeTable"></table>
+      </div>
+      <div class="card">
+        <div class="card-h">Filler words (last 20 takes)</div>
+        <div id="fillerBars"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== HISTORY ============================== -->
+  <section id="tab-history" class="tabpanel hidden">
+    <div class="card">
+      <div class="row between wrap-row">
+        <div class="card-h" style="margin:0">Session history</div>
+        <div class="row gap-s">
+          <select id="historyMode"><option value="">All scenarios</option></select>
+          <a class="ghost btn-link" href="/api/export">⤓ Export JSON</a>
+        </div>
+      </div>
+      <p class="muted small">Stored locally in <code>data/thought_to_speak.db</code>. Nothing leaves your machine except
+        the transcript sent to your AI provider (if configured).</p>
+      <div id="historyList"></div>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip hidden" role="tooltip"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

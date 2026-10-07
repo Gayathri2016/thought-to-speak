@@ -1,0 +1,768 @@
+{
+  "id": "communication",
+  "title": "Communication Mastery",
+  "description": "Ten short lessons that turn loose thoughts into clear, spoken answers. Each lesson teaches one framework, then makes you use it out loud.",
+  "modules": [
+    {
+      "id": "m1",
+      "title": "Say the point first",
+      "goal": "Listeners decide in the first 10 seconds whether to keep listening. Lead with the answer.",
+      "lessons": [
+        {
+          "id": "c1-bluf",
+          "title": "Bottom line up front",
+          "minutes": 8,
+          "skill": "clarity",
+          "summary": "Open with your conclusion, then give only the context needed to trust it.",
+          "concept": [
+            "Most people speak in the order they thought: background, then details, then — finally — the point. Listeners have to hold everything in their heads while waiting for the answer, and many stop listening before it arrives.",
+            "BLUF (Bottom Line Up Front) flips the order. Your first sentence is the conclusion, decision or answer. Everything after it is support. If you get interrupted after one sentence, the listener still has what matters.",
+            "It feels abrupt the first few times. It isn't — it sounds confident and respectful of the listener's time."
+          ],
+          "framework": {
+            "name": "BLUF",
+            "steps": [
+              {
+                "label": "Bottom line",
+                "desc": "One sentence: the answer, decision or recommendation."
+              },
+              {
+                "label": "Context",
+                "desc": "The 1–2 facts the listener needs to trust it."
+              },
+              {
+                "label": "Next step",
+                "desc": "What happens now, or what you need from them."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Starter: “The short answer is…” / “My recommendation is…” / “Bottom line: …”",
+            "If your first sentence starts with “So, background…”, stop and restart.",
+            "Context is a maximum of two facts. More than that is a report, not an answer.",
+            "End with a next step, not a summary of what you already said."
+          ],
+          "example": {
+            "prompt": "Your manager asks: “Are we going to make the Friday release?”",
+            "before": "So, we started the week with the schema change, and that took longer because the upstream team changed their format, and then QA found two issues in the consumer, one of which we fixed yesterday, and the other is being looked at, so it's a bit tight…",
+            "after": "No — we'll ship Monday, not Friday. Upstream changed their schema mid-week and QA found one blocking consumer bug that we're fixing now. I need a 30-minute review slot from you on Monday morning to sign off.",
+            "why": "The answer (“No — Monday”) arrives in the first three words. Two facts of context. A clear ask at the end."
+          },
+          "exercise": {
+            "mode": "Leadership",
+            "instructions": "Answer with BLUF. Your first sentence must be the answer. Keep it under 60 seconds.",
+            "prompts": [
+              "Your director asks whether your team can take on a new project this quarter.",
+              "A peer asks if they should use Kafka or Kinesis for a new event pipeline.",
+              "Leadership asks for a status update on a project that is two weeks behind."
+            ],
+            "constraint": "First sentence = the answer. Max two facts of context.",
+            "target_seconds": [
+              30,
+              60
+            ],
+            "pass": {
+              "overall": 62,
+              "checks": [
+                {
+                  "metric": "scores.clarity",
+                  "op": ">=",
+                  "value": 62,
+                  "label": "Clarity ≥ 62"
+                },
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.67,
+                  "label": "Hit at least 2 of 3 BLUF parts"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c2-prep",
+          "title": "PREP: Point, Reason, Example, Point",
+          "minutes": 10,
+          "skill": "structure",
+          "summary": "A four-beat shape for any opinion or recommendation, impromptu or prepared.",
+          "concept": [
+            "When someone asks what you think, the risk is rambling: you circle the idea without landing it. PREP gives you a shape you can reach for with zero prep time.",
+            "State your Point. Give the Reason. Make it concrete with an Example. Restate the Point so it sticks. The repetition is deliberate — spoken language needs it, because listeners can't re-read.",
+            "PREP works for meetings, Toastmasters Table Topics, interviews (“What's your view on…?”) and Slack huddles alike."
+          ],
+          "framework": {
+            "name": "PREP",
+            "steps": [
+              {
+                "label": "Point",
+                "desc": "Your position in one sentence."
+              },
+              {
+                "label": "Reason",
+                "desc": "The single strongest reason — “because…”."
+              },
+              {
+                "label": "Example",
+                "desc": "One concrete story, number or case."
+              },
+              {
+                "label": "Point again",
+                "desc": "Restate the point, ideally in fresh words."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Point: “I believe…” / “My view is…”",
+            "Reason: “The main reason is…” — pick ONE reason, not three weak ones.",
+            "Example: “For example, last quarter…” — names, numbers, places.",
+            "Point again: “That's why I think…” / “So, …”"
+          ],
+          "example": {
+            "prompt": "Is it better to be a specialist or a generalist?",
+            "before": "Hmm, well, it kind of depends, there are pros and cons to both, specialists know a lot about one thing, generalists know a bit about everything, and I guess it depends on your career and the market…",
+            "after": "Early in a career, be a specialist. The reason is simple: depth gets you hired, breadth gets you promoted later. For example, I got my first data job because I knew Kafka inside out — nobody hired me for being decent at everything. So go deep first, then widen.",
+            "why": "A clear position, one reason, one personal example, and a restated point that adds a twist (“then widen”)."
+          },
+          "exercise": {
+            "mode": "Toastmasters",
+            "instructions": "Take a position and use all four PREP beats. Don't hedge — pick a side.",
+            "prompts": [
+              "Is remote work better than working in an office?",
+              "Should every engineer learn to speak publicly?",
+              "Is it better to be a specialist or a generalist?",
+              "Should companies let AI write their code?"
+            ],
+            "constraint": "All four beats, one reason only, zero “it depends”.",
+            "target_seconds": [
+              45,
+              90
+            ],
+            "pass": {
+              "overall": 64,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.75,
+                  "label": "Hit at least 3 of 4 PREP beats"
+                },
+                {
+                  "metric": "metrics.hedge_count",
+                  "op": "<=",
+                  "value": 2,
+                  "label": "At most 2 hedges"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c3-three",
+          "title": "The rule of three",
+          "minutes": 8,
+          "skill": "structure",
+          "summary": "Preview three points, deliver three points. Listeners remember threes.",
+          "concept": [
+            "People can hold about three items in working memory while listening. Two feels incomplete; four or more gets forgotten.",
+            "Preview the three (“There are three reasons…”), deliver them with signposts (“First… Second… Third…”), and the listener always knows where they are.",
+            "Signposting feels mechanical when you write it. Spoken, it's the single biggest clarity boost you can make."
+          ],
+          "framework": {
+            "name": "Rule of three",
+            "steps": [
+              {
+                "label": "Preview",
+                "desc": "“There are three things…” — name the count."
+              },
+              {
+                "label": "First",
+                "desc": "Point one, one or two sentences."
+              },
+              {
+                "label": "Second",
+                "desc": "Point two."
+              },
+              {
+                "label": "Third",
+                "desc": "Point three — save the strongest for last."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Say the number out loud: “three reasons”, “three steps”, “three risks”.",
+            "Use explicit signposts: first / second / third (or finally).",
+            "Keep each point to 1–2 sentences.",
+            "Put your strongest point last — it's the one people remember."
+          ],
+          "example": {
+            "prompt": "Why should we invest in data quality this quarter?",
+            "before": "Data quality is important because bad data causes issues, and dashboards are wrong sometimes, and also ML models get worse, plus people lose trust and there's also compliance stuff…",
+            "after": "Three reasons. First, two exec dashboards were wrong last month, and we only caught it by accident. Second, our churn model's accuracy dropped six points on dirty inputs. Third — and this is the big one — finance can't sign off the audit until lineage is fixed.",
+            "why": "Counted preview, clear signposts, one concrete fact each, strongest point last."
+          },
+          "exercise": {
+            "mode": "Leadership",
+            "instructions": "Preview “three” out loud, then deliver each with a signpost.",
+            "prompts": [
+              "Kick off a new quarter: what matters most and why?",
+              "Explain to your team why you're changing the on-call process.",
+              "Pitch your director on headcount for a new initiative."
+            ],
+            "constraint": "Say “three” in your first sentence. Use first / second / third.",
+            "target_seconds": [
+              45,
+              90
+            ],
+            "pass": {
+              "overall": 64,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.75,
+                  "label": "Preview + at least 2 signposts"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "title": "Think on your feet",
+      "goal": "Buy thinking time without sounding lost, and give unprepared answers a shape.",
+      "lessons": [
+        {
+          "id": "c4-pause",
+          "title": "Pause, don't fill",
+          "minutes": 7,
+          "skill": "delivery",
+          "summary": "Replace um, uh, like and you know with a silent beat.",
+          "concept": [
+            "Fillers are your brain saying “I'm still thinking — don't interrupt me.” A silent pause sends the same signal, but listeners hear it as confidence instead of uncertainty.",
+            "A one-second pause feels like forever to the speaker and normal to the listener. Recordings prove this every time.",
+            "Hedges (“I think”, “maybe”, “kind of”) are fillers for conviction. Cut them when you actually know the answer."
+          ],
+          "framework": {
+            "name": "Speak–Pause–Speak",
+            "steps": [
+              {
+                "label": "Opening line",
+                "desc": "Start with a full, deliberate sentence."
+              },
+              {
+                "label": "Body",
+                "desc": "Close your mouth between ideas. Breathe instead of filling."
+              },
+              {
+                "label": "Close",
+                "desc": "Finish with a downward tone — no trailing “so, yeah…”."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Feel a filler coming? Close your lips. You can't say “um” with your mouth closed.",
+            "Slow down by about 10%. Fillers spike when you rush.",
+            "Swap “I think we should…” for “We should…” when you mean it.",
+            "Never end with “so, yeah” or “that's it”. Stop on your last real word."
+          ],
+          "example": {
+            "prompt": "Tell me about yourself.",
+            "before": "Um, so, yeah, I'm a, like, data engineer, and I, uh, basically work on, you know, streaming stuff, I think mostly Kafka and, um, Flink…",
+            "after": "I'm a data engineer who builds real-time systems. [pause] For the last five years I've worked mostly on Kafka and Flink pipelines. [pause] Right now I'm focused on bringing GenAI into those streams.",
+            "why": "Same facts. The pauses replace eight fillers, and the speaker suddenly sounds senior."
+          },
+          "exercise": {
+            "mode": "Interview",
+            "instructions": "Speak slowly. Every time you feel a filler coming, pause instead. Use the timer — aim for the full time range.",
+            "prompts": [
+              "Tell me about yourself in 60 seconds.",
+              "Why are you interested in this role, and why now?",
+              "What are you most proud of in the last year?"
+            ],
+            "constraint": "Fillers under 2 per 100 words. At most 1 hedge.",
+            "target_seconds": [
+              45,
+              75
+            ],
+            "pass": {
+              "overall": 60,
+              "checks": [
+                {
+                  "metric": "metrics.filler_rate",
+                  "op": "<=",
+                  "value": 2,
+                  "label": "Under 2 fillers per 100 words"
+                },
+                {
+                  "metric": "metrics.hedge_count",
+                  "op": "<=",
+                  "value": 1,
+                  "label": "At most 1 hedge"
+                },
+                {
+                  "metric": "voice.stalls",
+                  "op": "<=",
+                  "value": 0,
+                  "label": "No stalls over 2.5 s",
+                  "audio": true
+                },
+                {
+                  "metric": "voice.scores.pace",
+                  "op": ">=",
+                  "value": 70,
+                  "label": "Pace score ≥ 70",
+                  "audio": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c5-bridge",
+          "title": "Acknowledge, bridge, answer",
+          "minutes": 8,
+          "skill": "relevance",
+          "summary": "Handle hard or unexpected questions without freezing or rambling.",
+          "concept": [
+            "When a question catches you off guard, the instinct is to start talking immediately and hope an answer appears. It usually doesn't.",
+            "Instead: Acknowledge the question (it buys two seconds and shows you heard it). Bridge to the part you can speak to with authority. Then Answer directly — including “I don't know yet, here's how I'll find out” when that's the truth.",
+            "This is not dodging. A bridge that never returns to the question is dodging. Always land the answer."
+          ],
+          "framework": {
+            "name": "ABA",
+            "steps": [
+              {
+                "label": "Acknowledge",
+                "desc": "“That's a fair concern.” / “Good question — let me be direct.”"
+              },
+              {
+                "label": "Bridge",
+                "desc": "Connect to what you know: “What I can tell you is…”"
+              },
+              {
+                "label": "Answer",
+                "desc": "A direct answer, plus a next step if it's incomplete."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Acknowledge in ≤ 1 sentence. Never “That's a great question!” three times a day.",
+            "Bridge phrases: “What I can tell you is…”, “The key point is…”, “Here's what we know…”",
+            "If you don't know: say so, then say how and when you'll find out.",
+            "Repeat a keyword from their question in your answer."
+          ],
+          "example": {
+            "prompt": "Customer CTO: “Why did the pilot miss its latency target?”",
+            "before": "Well, there were a lot of factors, the network was slow, and your data volume was higher, and we had some config things, and our team was also short-staffed…",
+            "after": "Fair question, and you deserve a straight answer. What we found is that 80% of the latency came from one cross-region hop. The direct answer: we missed because we under-sized for your peak volume. We'll re-run in-region next week and send you the p99 numbers by Friday.",
+            "why": "Acknowledges once, bridges to evidence, answers the 'why' directly, commits to a next step."
+          },
+          "exercise": {
+            "mode": "FDE / Customer",
+            "instructions": "Use all three ABA beats. Your answer must directly answer the question asked.",
+            "prompts": [
+              "The customer's CTO asks why the pilot missed its latency target. Respond.",
+              "A customer says your platform is too expensive compared to building in-house. Respond.",
+              "A customer asks for a feature on your roadmap next month. It is not planned. Respond."
+            ],
+            "constraint": "Acknowledge in one sentence. Land a direct answer and a next step.",
+            "target_seconds": [
+              45,
+              90
+            ],
+            "pass": {
+              "overall": 63,
+              "checks": [
+                {
+                  "metric": "scores.relevance",
+                  "op": ">=",
+                  "value": 62,
+                  "label": "Relevance ≥ 62"
+                },
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.67,
+                  "label": "Hit at least 2 of 3 ABA beats"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c6-wsn",
+          "title": "What? So what? Now what?",
+          "minutes": 8,
+          "skill": "structure",
+          "summary": "The fastest impromptu structure: fact, meaning, action.",
+          "concept": [
+            "When you're asked for an update or an opinion with no warning, you need a structure that works on any topic. This one does.",
+            "What: the fact or situation. So what: why it matters to this audience. Now what: what should happen next.",
+            "Most updates stop after “What”. The “So what” is where you show judgment — and it's what leaders actually want to hear."
+          ],
+          "framework": {
+            "name": "What / So what / Now what",
+            "steps": [
+              {
+                "label": "What",
+                "desc": "The fact, event or situation in one or two sentences."
+              },
+              {
+                "label": "So what",
+                "desc": "Why it matters — impact on this audience."
+              },
+              {
+                "label": "Now what",
+                "desc": "Recommendation, decision or next step."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "What: “Here's what happened…”",
+            "So what: “This matters because…” / “The impact is…”",
+            "Now what: “So I recommend…” / “Next, we'll…”",
+            "Spend the most time on So what."
+          ],
+          "example": {
+            "prompt": "“Quick update on the outage?”",
+            "before": "Yeah so the cluster went down around 2am, the brokers ran out of disk, we restarted them, and it's back up now.",
+            "after": "Two brokers ran out of disk at 2am and we were down for 40 minutes. That matters because the fraud pipeline was blind for that window — about 3,000 transactions went unscored. Now we're adding disk alerts at 70% and re-scoring the gap this afternoon.",
+            "why": "The “before” is only What. The “after” adds the impact and the plan — that's what makes it a leadership answer."
+          },
+          "exercise": {
+            "mode": "Leadership",
+            "instructions": "Give an update using What, So what, Now what. Spend the most time on So what.",
+            "prompts": [
+              "Give an update to leadership on a project that is two weeks behind.",
+              "Your team just shipped a big launch. Give a 60-second update to your VP.",
+              "Explain to a peer team why you are saying no to their request this quarter."
+            ],
+            "constraint": "Name the impact explicitly (“This matters because…”).",
+            "target_seconds": [
+              40,
+              75
+            ],
+            "pass": {
+              "overall": 63,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 1.0,
+                  "label": "All three beats present"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "title": "Make it land",
+      "goal": "Specific evidence, precise words and a strong ending make answers memorable.",
+      "lessons": [
+        {
+          "id": "c7-star",
+          "title": "STAR with numbers",
+          "minutes": 10,
+          "skill": "answer_quality",
+          "summary": "Behavioral answers that show ownership and measurable results.",
+          "concept": [
+            "Behavioral interview questions (“Tell me about a time…”) are scored on evidence, not eloquence. STAR gives the evidence a shape.",
+            "Keep Situation and Task short — together, about 20% of your answer. Spend most of the time on Action (what YOU did, with “I”, not “we”). Finish with a Result that has a number in it.",
+            "No number? Use a comparison: before vs after, time saved, people unblocked, incidents avoided."
+          ],
+          "framework": {
+            "name": "STAR",
+            "steps": [
+              {
+                "label": "Situation",
+                "desc": "Where and when — one or two sentences."
+              },
+              {
+                "label": "Task",
+                "desc": "What you were responsible for."
+              },
+              {
+                "label": "Action",
+                "desc": "What YOU did, step by step. Use “I”."
+              },
+              {
+                "label": "Result",
+                "desc": "Measurable outcome, plus what you learned."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Situation + Task ≤ 20% of the answer.",
+            "Action is the longest part. Say “I decided…”, “I built…”, “I convinced…”.",
+            "Result needs a number: %, time, $, users, incidents.",
+            "Optional last line: what you'd do differently, or what you learned."
+          ],
+          "example": {
+            "prompt": "Tell me about a time you improved a system's performance.",
+            "before": "We had a slow pipeline, so we looked into it as a team and made some optimizations and it got a lot faster and everyone was happy.",
+            "after": "Last year our clickstream pipeline was missing its 5-minute SLA. I owned the fix. I profiled it and found that 60% of the time was a single skewed join, so I salted the key and moved the enrichment to a broadcast lookup. Latency dropped from 9 minutes to 2, and we haven't missed the SLA since.",
+            "why": "Short setup, clear ownership (“I owned”, “I profiled”), concrete actions, and a before/after number."
+          },
+          "exercise": {
+            "mode": "Interview",
+            "instructions": "Use STAR. Say “I” for your actions and include at least one number in the result.",
+            "prompts": [
+              "Tell me about the hardest technical problem you solved in the last year.",
+              "Tell me about a time you disagreed with a senior stakeholder.",
+              "Tell me about a time you raised the bar for your team."
+            ],
+            "constraint": "At least one number. Action is the longest part.",
+            "target_seconds": [
+              60,
+              120
+            ],
+            "pass": {
+              "overall": 65,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.75,
+                  "label": "At least 3 of 4 STAR parts"
+                },
+                {
+                  "metric": "metrics.has_numbers",
+                  "op": "==",
+                  "value": true,
+                  "label": "Includes a number"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c8-ladder",
+          "title": "Climb the abstraction ladder",
+          "minutes": 9,
+          "skill": "clarity",
+          "summary": "Explain technical ideas by moving between the big idea and a concrete example.",
+          "concept": [
+            "Experts lose audiences in two ways: staying abstract (“it's a distributed log”) or diving straight into detail (“partitions, offsets, ISR…”).",
+            "Good explainers move up and down a ladder: the big idea in plain words, then a concrete example or analogy, then how it works, then why it matters to this listener.",
+            "Pick the analogy for the audience. A product manager needs a different picture than a new engineer."
+          ],
+          "framework": {
+            "name": "Abstraction ladder",
+            "steps": [
+              {
+                "label": "Big idea",
+                "desc": "One plain-language sentence. No jargon."
+              },
+              {
+                "label": "Concrete example",
+                "desc": "An analogy or real case the listener already knows."
+              },
+              {
+                "label": "How it works",
+                "desc": "Two or three steps, using words from your example."
+              },
+              {
+                "label": "Why it matters",
+                "desc": "The benefit or trade-off for this listener."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Big idea: “In simple terms, X is…”",
+            "Example: “Think of it like…” / “For example…”",
+            "How: “First… then…” — at most three steps.",
+            "Why: “This matters to you because…” / “The trade-off is…”"
+          ],
+          "example": {
+            "prompt": "Explain exactly-once processing to a product manager.",
+            "before": "Exactly-once means the system uses checkpointing and two-phase commit with transactional producers so that state and offsets are consistent across failures.",
+            "after": "In simple terms, exactly-once means every event counts one time — never zero, never twice. Think of a bank transfer: you don't want it lost, and you definitely don't want it applied twice. The system saves a bookmark of where it is and only commits results together with that bookmark. For you, it means revenue numbers stay correct even when servers crash — at the cost of a bit more latency.",
+            "why": "Plain big idea, a familiar example, how it works in the example's language, and the trade-off that matters to a PM."
+          },
+          "exercise": {
+            "mode": "Technical Explanation",
+            "instructions": "Explain to the audience named in the prompt. Climb all four rungs; no undefined jargon.",
+            "prompts": [
+              "Explain backpressure and why it matters in a streaming pipeline, to a product manager.",
+              "Explain how a vector database powers retrieval-augmented generation, to a new engineer.",
+              "Explain what an AI agent harness is to a non-technical executive."
+            ],
+            "constraint": "Use one analogy. Name one trade-off.",
+            "target_seconds": [
+              60,
+              120
+            ],
+            "pass": {
+              "overall": 64,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.75,
+                  "label": "At least 3 of 4 rungs"
+                },
+                {
+                  "metric": "scores.clarity",
+                  "op": ">=",
+                  "value": 62,
+                  "label": "Clarity ≥ 62"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c9-precise",
+          "title": "Precise words",
+          "minutes": 7,
+          "skill": "clarity",
+          "summary": "Replace vague words — stuff, things, really, a lot — with specifics.",
+          "concept": [
+            "Articulate speakers aren't using big words. They're using specific ones. “We improved things a lot” says nothing; “we cut p99 latency in half” says everything.",
+            "Vague words (stuff, things, a lot, really, very, good, nice, issues) are placeholders your brain uses when it hasn't decided what it means yet. Each one is an invitation to be more precise.",
+            "The fix isn't vocabulary — it's deciding. What exactly improved? By how much? For whom?"
+          ],
+          "framework": {
+            "name": "Claim → Specifics → Impact",
+            "steps": [
+              {
+                "label": "Claim",
+                "desc": "What you're asserting, in one sentence."
+              },
+              {
+                "label": "Specifics",
+                "desc": "Names, numbers, examples instead of 'stuff' and 'things'."
+              },
+              {
+                "label": "Impact",
+                "desc": "The concrete consequence for someone."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "“a lot” → a number. “really good” → good at what, by how much?",
+            "“stuff / things” → name the actual thing.",
+            "“issues” → which issue? one example.",
+            "Verbs beat adjectives: “cut”, “doubled”, “unblocked”, “replaced”."
+          ],
+          "example": {
+            "prompt": "What went well on your last project?",
+            "before": "A lot of things went really well, the team did good stuff, the new system is very nice and it fixed a lot of issues we had.",
+            "after": "Two things went well. The new ingestion service replaced three cron jobs and cut on-call pages from twelve a week to two. And the team shipped it a week early, because we agreed the schema contract on day one.",
+            "why": "Every vague word became a named thing or a number."
+          },
+          "exercise": {
+            "mode": "Interview",
+            "instructions": "Answer with zero vague words. If you hear yourself say 'stuff', 'things' or 'a lot', name the specific instead.",
+            "prompts": [
+              "What are you most proud of in the last year?",
+              "Describe a project that failed or slipped. What was your part in it?",
+              "What would your last manager say is your biggest strength?"
+            ],
+            "constraint": "At most 2 vague words. Include one number.",
+            "target_seconds": [
+              45,
+              90
+            ],
+            "pass": {
+              "overall": 62,
+              "checks": [
+                {
+                  "metric": "metrics.vague_count",
+                  "op": "<=",
+                  "value": 2,
+                  "label": "At most 2 vague words"
+                },
+                {
+                  "metric": "metrics.has_numbers",
+                  "op": "==",
+                  "value": true,
+                  "label": "Includes a number"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c10-close",
+          "title": "Land the ending",
+          "minutes": 8,
+          "skill": "structure",
+          "summary": "Finish with a call-back or a clear ask — never “so, yeah”.",
+          "concept": [
+            "Listeners remember the last thing you say. Most speakers waste it on “so yeah, that's it” or a trailing repeat.",
+            "Two strong endings: a call-back (return to your opening image or question, now answered) or a clear ask (exactly what you want the listener to do).",
+            "Plan your last sentence before you start. Knowing where you'll land makes the middle tighter too."
+          ],
+          "framework": {
+            "name": "Hook → Message → Close",
+            "steps": [
+              {
+                "label": "Hook",
+                "desc": "A question, image or surprising fact in the first sentence."
+              },
+              {
+                "label": "Message",
+                "desc": "Your one key point, with a story or example."
+              },
+              {
+                "label": "Close",
+                "desc": "Call back to the hook, or make a specific ask."
+              }
+            ]
+          },
+          "cheat_sheet": [
+            "Hook: “Have you ever…?” / “Picture this…” / a surprising number.",
+            "Call-back: reuse the hook's words in the final line.",
+            "Ask: who does what by when.",
+            "Stop talking after the last line. Silence is the full stop."
+          ],
+          "example": {
+            "prompt": "What is one habit that changed your life?",
+            "before": "…and so that's why I like reading every morning, it's been really helpful, so yeah, that's my habit I guess.",
+            "after": "Have you ever finished a day and realized you never did anything for yourself? … [story] … So now, before anyone else gets a piece of my day, I take twenty minutes for me. Try it tomorrow — before you open your inbox.",
+            "why": "The close answers the opening question and ends on a specific, doable ask."
+          },
+          "exercise": {
+            "mode": "Toastmasters",
+            "instructions": "Open with a hook. Plan your last sentence before you start: a call-back or a clear ask.",
+            "prompts": [
+              "What is one habit that changed your life?",
+              "Describe a moment when a stranger changed your perspective.",
+              "Tell us about a risk you are glad you took."
+            ],
+            "constraint": "First sentence is a hook. Last sentence is a call-back or an ask.",
+            "target_seconds": [
+              60,
+              120
+            ],
+            "pass": {
+              "overall": 64,
+              "checks": [
+                {
+                  "metric": "framework_coverage",
+                  "op": ">=",
+                  "value": 0.67,
+                  "label": "Hook and close both detected"
+                },
+                {
+                  "metric": "voice.volume.trails_off",
+                  "op": "==",
+                  "value": false,
+                  "label": "Last sentence as loud as the first",
+                  "audio": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
