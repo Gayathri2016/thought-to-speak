@@ -48,7 +48,7 @@ per-scenario stats, top filler words, and a personalised next exercise.
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-user>/thought-to-speak.git
+git clone https://github.com/Gayathri2016/thought-to-speak.git
 cd thought-to-speak
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
