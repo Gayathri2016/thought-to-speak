@@ -36,6 +36,16 @@ curriculum = Curriculum(BASE_DIR / "content" / "journeys")
 app = FastAPI(title="Thought → Speak", version="6.0")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
+
+@app.middleware("http")
+async def revalidate_app_files(request: Request, call_next):
+    """Make browsers re-check the page and its JS/CSS on every load (cheap: unchanged files return 304),
+    so an update never runs with a stale, cached app.js."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 MAX_TRANSCRIPT_CHARS = 8000
 
 
