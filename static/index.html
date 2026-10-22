@@ -24,6 +24,7 @@
   <nav class="wrap tabs" role="tablist">
     <button class="tab active" data-tab="learn" role="tab">📚 Learn</button>
     <button class="tab" data-tab="practice" role="tab">🎙️ Practice</button>
+    <button class="tab" data-tab="pronounce" role="tab">🗣️ Pronounce</button>
     <button class="tab" data-tab="progress" role="tab">📈 Progress</button>
     <button class="tab" data-tab="history" role="tab">🗂️ History</button>
   </nav>
@@ -42,18 +43,9 @@
           <div class="today-progress" id="todayProgress"></div>
         </div>
         <div id="todayItems" class="today-items"></div>
+        <div id="todayWords" class="today-words"></div>
       </div>
-      <div class="card">
-        <div class="row between wrap-row">
-          <div>
-            <span class="eyebrow">Journey</span>
-            <div class="card-h" id="journeyTitle" style="margin:2px 0 4px"></div>
-            <p class="muted small" id="journeyDesc" style="margin:0"></p>
-          </div>
-          <div class="journey-meter"><div class="jm-bar"><div id="journeyFill"></div></div><span id="journeyCount" class="small"></span></div>
-        </div>
-        <div id="journeyModules"></div>
-      </div>
+      <div id="journeys"></div>
     </div>
 
     <article id="lessonView" class="hidden">
@@ -114,7 +106,7 @@
           <div id="modeChips" class="chips" role="radiogroup"></div>
           <div class="prompt-box">
             <div class="row between">
-              <span class="eyebrow">Your prompt</span>
+              <span class="eyebrow" id="promptLabel">Your prompt</span>
               <div class="row gap-s">
                 <button id="newPromptBtn" class="ghost sm">↻ New prompt</button>
                 <button id="customPromptBtn" class="ghost sm">✎ Custom</button>
@@ -123,7 +115,7 @@
             <div id="promptText" class="prompt-text"></div>
             <textarea id="promptEdit" class="hidden" rows="2" maxlength="1000"
                       placeholder="Type your own question or topic…"></textarea>
-            <div class="row gap-s wrap-row">
+            <div class="row gap-s wrap-row" id="frameworkRow">
               <span class="muted small">Framework:</span>
               <span id="frameworkPills" class="pills"></span>
               <span id="targetTime" class="muted small"></span>
@@ -183,6 +175,7 @@
           <div id="results" class="hidden">
             <div id="warning" class="warn hidden"></div>
             <div id="lessonResult" class="lesson-result hidden"></div>
+            <div id="pronCard" class="pron hidden"></div>
             <div class="score-row">
               <div class="ring" id="ring" role="img" aria-label="Overall score">
                 <svg viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/>
@@ -218,13 +211,17 @@
               <p id="voiceQuality" class="warn hidden"></p>
             </div>
 
+            <div id="languageCard" class="language hidden"></div>
+
             <div class="split">
               <div><h3>✅ What worked</h3><ul id="strengths"></ul></div>
               <div><h3>🎯 What to improve</h3><ul id="improvements"></ul></div>
             </div>
 
-            <h3>🧱 Structure check</h3>
-            <div id="structureMap" class="smap"></div>
+            <div id="structureWrap">
+              <h3>🧱 Structure check</h3>
+              <div id="structureMap" class="smap"></div>
+            </div>
 
             <div id="coachBox" class="coach">
               <div class="coach-h" id="coachTitle">Coach</div>
@@ -264,6 +261,30 @@
     </div>
   </section>
 
+  <!-- ============================== PRONOUNCE ============================== -->
+  <section id="tab-pronounce" class="tabpanel hidden">
+    <div class="card">
+      <div class="row between wrap-row">
+        <div>
+          <span class="eyebrow">Pronunciation drills</span>
+          <div class="card-h" style="margin:2px 0 4px">Read aloud, see every word that didn't come through</div>
+          <p class="muted small" style="margin:0">Click any underlined word to see its stress and hear it. Then record the sentence.</p>
+        </div>
+        <div id="soundSummary" class="sound-summary"></div>
+      </div>
+      <div id="setChips" class="chips" style="margin-top:12px" role="radiogroup"></div>
+    </div>
+    <div class="grid2">
+      <div class="col">
+        <div class="card" id="setCard"></div>
+      </div>
+      <div class="col">
+        <div class="card" id="pairsCard"></div>
+        <div class="card" id="troubleCard"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================== PROGRESS ============================== -->
   <section id="tab-progress" class="tabpanel hidden">
     <div id="recCard" class="card rec-card"></div>
@@ -289,6 +310,7 @@
         <div id="fillerBars"></div>
       </div>
     </div>
+    <div id="langProgress"></div>
   </section>
 
   <!-- ============================== HISTORY ============================== -->
@@ -309,6 +331,7 @@
 </main>
 
 <div id="tooltip" class="tooltip hidden" role="tooltip"></div>
+<div id="wordPop" class="word-pop hidden" role="dialog" aria-label="Word pronunciation"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

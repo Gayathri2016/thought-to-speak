@@ -119,16 +119,20 @@ def test_curriculum_content_is_valid():
     from coach.curriculum import Curriculum
     from coach.prompts import MODES
     cur = Curriculum()
-    assert len(cur.order) == 10
+    assert len(cur.order) == 19 and len(cur.journeys) == 2
     for lid in cur.order:
         les = cur.get(lid)
+        if cur.is_read_aloud(les):
+            assert cur.read_aloud_texts(les)
+            continue
         spec = cur.spec(les)
         assert spec["framework"] and les["exercise"]["mode"] in MODES and les["exercise"]["prompts"]
 
 
 def test_lesson_pass_unlocks_next_and_today_plan(client):
     today = client.get("/api/today").json()
-    assert [i["kind"] for i in today["items"]] == ["warmup", "lesson", "review"]
+    assert [i["kind"] for i in today["items"]] == ["warmup", "lesson", "read_aloud", "review"]
+    assert len(today["words"]) == 3
     assert today["items"][1]["lesson_id"] == "c1-bluf"
 
     fail = client.post("/api/analyze", json={"transcript": WEAK, "lesson_id": "c1-bluf",
@@ -219,3 +223,79 @@ def test_analyze_audio_falls_back_to_browser_transcript(client, monkeypatch):
     bad = client.post("/api/analyze-audio", files={"audio": ("x.wav", silent, "audio/wav")},
                       data={"payload": json.dumps({"transcript": STRONG})})
     assert bad.status_code == 400
+
+
+# ----------------------------------------------------------------------------- v5: pronunciation & language
+def test_stress_and_respelling():
+    from coach.pronunciation import describe
+    d = describe("development")
+    assert d["known"] and d["syllables"] == 4 and d["stress"] == "2nd of 4 syllables" and "VEH" in d["respell"]
+    assert describe("think")["respell"] == "think" and "TH" in describe("think")["sounds"]
+    assert describe("kubernetes")["known"]          # custom technical lexicon
+
+
+def test_read_aloud_detects_swaps_and_sound_confusions():
+    from coach.pronunciation import assess_read_aloud
+    a = assess_read_aloud("I think three things went through the thread on Thursday.",
+                          "I sink three tings went through the um thread on Thursday")
+    assert a["total"] == 10 and a["correct"] == 8 and a["accuracy"] == 80
+    assert {"th → s", "th → t"} <= set(a["confusions"])
+    assert a["sounds"]["TH"][1] >= 5 and a["sounds"]["TH"][0] < a["sounds"]["TH"][1]
+    missed = assess_read_aloud("Please sit in this seat", "please sit this seat")
+    assert missed["missed"] == ["in"]
+    words = [{"word": w, "start": i, "end": i + .3, "probability": p}
+             for i, (w, p) in enumerate(zip("very well we will".split(), [.9, .3, .9, .9]))]
+    assert assess_read_aloud("Very well we will", "", words)["unclear"] == ["well"]
+
+
+def test_vocabulary_and_sentence_analysis():
+    from coach import language as L
+    weak = ("So we had a lot of stuff going on. So it was very good. So we fixed it and then it was fine "
+            "and then we shipped it and so it worked and then everyone was happy.")
+    v, s = L.vocabulary(weak, ["pragmatic"]), L.sentences(weak)
+    assert {w["phrase"] for w in v["weak"]} >= {"a lot of", "stuff", "very good"}
+    assert s["repeated_opener"] == "so" and s["run_ons"]
+    strong = ("When the pipeline missed its SLA, I profiled it and found a skewed join. I salted the key, "
+              "which eliminated the hotspot. The pragmatic lesson: measure before you optimize.")
+    v2, s2 = L.vocabulary(strong, ["pragmatic"]), L.sentences(strong)
+    assert v2["score"] > v["score"] and "pragmatic" in v2["daily_used"] and s2["score"] > s["score"]
+    issues = {i["original"] for i in L.grammar_issues("He don't know. There's many bugs. It took a hour.")}
+    assert {"he don't", "there's many", "a hour"} <= issues
+
+
+def test_read_aloud_endpoint_and_th_lesson(client):
+    target = "I think three things went through the thread on Thursday."
+    r = client.post("/api/analyze", json={"transcript": "I sink three things went through the thread on Thursday",
+                                          "kind": "read_aloud", "target_text": target}).json()
+    assert r["analysis"]["kind"] == "read_aloud" and r["analysis"]["pronunciation"]["confusions"] == ["th → s"]
+    ok = client.post("/api/analyze", json={"transcript": target, "lesson_id": "s4-th", "target_text": target}).json()
+    assert ok["lesson_result"]["passed"] and ok["attempt"]["mode"] == "Read aloud"
+    p = client.get("/api/progress").json()
+    assert p["language"]["read_aloud_count"] == 2 and "TH" in p["language"]["sounds"]
+    assert p["trend"] == []                          # drills don't pollute the speaking-score trend
+    assert client.get("/api/pronounce/lookup", params={"words": "photography"}).json()[0]["stress"]
+    assert len(client.get("/api/pronounce/sets").json()) == 7
+
+
+def test_challenge_mode_hides_word_replacements(client):
+    r = client.post("/api/analyze", json={"transcript": "It was very good and he don't mind, a lot of stuff.",
+                                          "mode": "Interview", "challenge_mode": True}).json()
+    L = r["analysis"]["language"]
+    assert all(not w["alternatives"] for w in L["vocabulary"]["weak"])
+    assert all(g["suggestion"] is None for g in L["sentences"]["grammar"])
+
+
+def test_llm_language_notes_merge_and_respect_challenge(monkeypatch):
+    from coach import analysis, llm
+    fake = {"scores": {"structure": 70, "clarity": 70, "relevance": 70, "answer_quality": 70},
+            "language": {"word_upgrades": [{"original": "good", "better": "effective", "why": "more precise"}],
+                         "grammar": [{"original": "we was", "corrected": "we were", "issue": "agreement"}],
+                         "sentence_tip": "Split your second sentence."}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "openai")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (json.loads(json.dumps(fake)), "openai:test"))
+    a = analysis.analyze(STRONG, "Interview", PROMPT)
+    assert a["language"]["word_upgrades"][0]["better"] == "effective"
+    assert any(g.get("source") == "ai" and g["suggestion"] == "we were" for g in a["language"]["sentences"]["grammar"])
+    c = analysis.analyze(STRONG, "Interview", PROMPT, challenge=True)
+    assert c["language"]["word_upgrades"][0]["better"] == ""
+    assert all(g["suggestion"] is None for g in c["language"]["sentences"]["grammar"])

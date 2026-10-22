@@ -20,6 +20,32 @@ in Challenge Mode it coaches with questions and never writes your answer for you
   explicit pass criteria. Your answer is scored against *that lesson's* framework.
 - **Today's session (~15 min):** a no-prep warm-up, your current lesson, and a review drill on your weakest skill.
 
+**Pronounce — new in v5**
+
+![Pronounce tab: TH drill with minimal pairs and a word's stress](docs/screenshots/pronounce.png)
+
+- **Read-aloud drills** in 7 sets: technical clarity, word stress, TH, V/W, R/L, short vs long vowels, word endings.
+- **Word-by-word result:** what you read is aligned with the target sentence; every word is marked clear,
+  unclear, swapped ("think" heard as "sink") or missed.
+- **Sound-swap detection:** a swapped word is compared with the target in the CMU Pronouncing Dictionary to name
+  the sound that changed (`th → s`, `v → w`, `r → l`, long *ee* → short *i*), and tracked per sound over time.
+- **Stress & respelling** for any word — `development` → dih-VEH-luhp-muhnt — plus ▶ hear / 🐢 slowly
+  (browser text-to-speech) and minimal-pair drills.
+
+![Word-by-word read-aloud result](docs/screenshots/read-aloud.png)
+
+**Words & sentences — new in v5**
+
+![Vocabulary and sentence-structure panel](docs/screenshots/words-sentences.png)
+
+- **Vocabulary:** variety, share of precise (less common) words, vague/weak wording with stronger alternatives,
+  repeated words, and **3 words of the day** from a 60-word professional word bank — the coach checks if you used them.
+- **Sentence structure:** sentence lengths (from punctuation or your pauses), run-ons, repeated openers,
+  passive voice, and basic grammar checks (`he don't`, `there's many`, `a hour`…). With an API key, the AI adds
+  context-aware word upgrades and grammar notes.
+- **Speak Clearly journey:** 9 lessons — word stress, technical words, endings, TH, V/W, R/L, precise words,
+  varied sentences, active voice.
+
 **Practice**
 - Five scenarios — Interview, Leadership, Technical explanation, Toastmasters, FDE / Customer — or your own prompt.
 - Scores for **structure, clarity, relevance, answer quality and delivery**, plus a framework check.
@@ -37,6 +63,7 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 | **Pitch variety** (monotone / limited / expressive) | autocorrelation F0 tracking (75–400 Hz), range in semitones |
 | Volume consistency and **trailing off** | speech-frame dB, last 15 % vs. the body |
 | Fillers that speech-to-text usually deletes | Whisper with a disfluent prompt so "um / uh" are kept |
+| Unclear words in free speech | local Whisper per-word confidence (< 50 %) |
 
 **Progress** — score trend, skills last-10 vs. previous-10, average gain from retrying, streak,
 per-scenario stats, top filler words, and a personalised next exercise.
@@ -48,7 +75,7 @@ per-scenario stats, top filler words, and a personalised next exercise.
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-user>/thought-to-speak.git
+git clone https://github.com/Gayathri2016/thought-to-speak.git
 cd thought-to-speak
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -100,9 +127,12 @@ coach/audio.py       waveform analysis and voice scores (numpy)
 coach/transcribe.py  Whisper: OpenAI API or local faster-whisper
 coach/metrics.py     fillers, hedges, vague words, WPM
 coach/curriculum.py  journeys, lesson pass checks, daily plan
+coach/pronunciation.py  read-aloud alignment, sound swaps, stress & respelling
+coach/language.py    vocabulary, sentence structure, grammar checks, word bank
 coach/insights.py    retry comparison, progress, recommendation
 coach/storage.py     SQLite + migrations
-content/             lessons (JSON)
+content/journeys/    lessons (JSON) — one file per journey
+content/pronunciation.json, content/vocabulary.json, content/lexicon/  drills, word bank, CMU dictionary subset
 static/              UI — plain HTML/CSS/JS, no build step
 tests/               pytest
 ```
@@ -118,6 +148,9 @@ pytest -q
 
 - Pitch tracking and pause detection are signal-processing heuristics, not trained models; background noise
   lowers accuracy (the app warns when the recording is quiet or noisy).
+- Pronunciation is assessed **at the word level** (what the recognizer heard vs. what you were asked to read),
+  not phoneme by phoneme. A recognizer can "autocorrect" a slightly off word, so a clean result means you were
+  understood — not that every sound was perfect. Unclear-word confidence needs local Whisper.
 - Without an API key, content scores are keyword heuristics — directional, not precise.
 - Single-user, local app. Multi-user deployment would need auth, per-user storage and rate limiting.
 
@@ -132,4 +165,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). `content/lexicon/cmudict_common.txt` is a subset of the
+[CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) (BSD-style license, see
+`content/lexicon/LICENSE-cmudict`). Word-frequency data comes from the
+[wordfreq](https://github.com/rspeer/wordfreq) package (installed via pip, not bundled).

@@ -1,0 +1,15 @@
+# Extra pronunciations for technical words missing from the CMU subset (ARPAbet, stress digits 0/1/2).
+idempotent AY2 D AH0 M P OW1 T AH0 N T
+kubernetes K UW2 B ER0 N EH1 T IY0 Z
+microservices M AY1 K R OW0 S ER2 V IH0 S IH0 Z
+containerized K AH0 N T EY1 N ER0 AY2 Z D
+orchestrate AO1 R K AH0 S T R EY2 T
+asynchronous EY0 S IH1 NG K R AH0 N AH0 S
+scalability S K EY2 L AH0 B IH1 L AH0 T IY0
+observability AH0 B Z ER2 V AH0 B IH1 L AH0 T IY0
+latency L EY1 T AH0 N S IY0
+throughput TH R UW1 P UH2 T
+api EY1 P IY1 AY1
+sql EH1 S K Y UW1 EH1 L
+genai JH EH1 N EY1 AY1
+llm EH1 L EH1 L EH1 M

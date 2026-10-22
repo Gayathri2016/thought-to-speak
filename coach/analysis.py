@@ -3,7 +3,9 @@ import logging
 import re
 
 from . import audio as audio_mod
+from . import language as lang
 from . import llm, metrics
+from . import pronunciation as pron
 from .prompts import MODES, normalize_mode
 
 log = logging.getLogger("thought_to_speak")
@@ -277,7 +279,12 @@ Return ONLY a JSON object with exactly these keys:
   "coaching_hint": str,             // one sentence, the single most useful thing to try next
   "coaching_questions": [str, ...], // 2-3 Socratic questions that make the speaker find the fix
   "next_challenge": str,            // a concrete retry instruction (constraint + focus)
-  "suggested_outline": [str, ...]   // see rules below
+  "suggested_outline": [str, ...],  // see rules below
+  "language": {
+    "word_upgrades": [{"original": str, "better": str, "why": str}],  // 0-3 vague/weak words → precise ones
+    "grammar": [{"original": str, "corrected": str, "issue": str}],   // 0-3 real grammar errors only
+    "sentence_tip": str                                               // one tip on sentence structure
+  }
 }
 
 Scoring (0-100, integers; 90+ exceptional, 75 strong, 60 adequate, 45 weak, <35 off-track):
@@ -292,7 +299,9 @@ Never invent facts the speaker did not say.
 If challenge_mode is true: suggested_outline MUST be [] and you must NOT write any replacement
 sentences, sample phrasing, or rewritten answer anywhere. Coach only with observations, hints, and questions.
 If challenge_mode is false: suggested_outline may contain 3-5 short skeleton bullets ("Label: idea")
-built only from the speaker's own content — an outline, never a full rewritten answer."""
+built only from the speaker's own content — an outline, never a full rewritten answer.
+language: quote the speaker's exact words in "original". Ignore speech-to-text artifacts. In challenge_mode,
+set "better" and "corrected" to "" and describe the issue only, so the speaker finds the fix."""
 
 
 def _voice_line(v):
@@ -327,8 +336,68 @@ def overall_from(scores: dict) -> int:
     return int(round(sum(scores[d] * WEIGHTS[d] for d in DIMENSIONS)))
 
 
+def language_report(text: str, words: list[dict] | None, challenge: bool, daily: list[str] | None) -> dict:
+    v = lang.vocabulary(text, daily)
+    sn = lang.sentences(text, words)
+    if challenge:  # don't hand over the replacement words
+        for g in sn.get("grammar", []):
+            g["suggestion"] = None
+        for w in v.get("weak", []):
+            w["alternatives"] = []
+    return {"vocabulary": v, "sentences": sn,
+            "unclear_words": pron.unclear_in_free_speech(words),
+            "scores": {"vocabulary": v["score"], "sentences": sn["score"]},
+            "word_upgrades": [], "sentence_tip": None}
+
+
+def _merge_llm_language(rep: dict, data: dict, challenge: bool):
+    ld = data.get("language") or {}
+    if not isinstance(ld, dict):
+        return
+    ups = [u for u in ld.get("word_upgrades") or [] if isinstance(u, dict) and u.get("original")]
+    rep["word_upgrades"] = [{"original": str(u["original"]), "better": "" if challenge else str(u.get("better", "")),
+                             "why": str(u.get("why", ""))} for u in ups[:3]]
+    seen = {g["original"] for g in rep["sentences"].get("grammar", [])}
+    for g in (ld.get("grammar") or [])[:3]:
+        if isinstance(g, dict) and g.get("original") and g["original"].lower() not in seen:
+            rep["sentences"].setdefault("grammar", []).append(
+                {"original": str(g["original"]), "suggestion": None if challenge else str(g.get("corrected") or "") or None,
+                 "issue": str(g.get("issue", "")), "source": "ai"})
+    if isinstance(ld.get("sentence_tip"), str) and ld["sentence_tip"].strip():
+        rep["sentence_tip"] = ld["sentence_tip"].strip()
+
+
+def analyze_read_aloud(text: str, target: str, words: list[dict] | None = None, voice: dict | None = None) -> dict:
+    """Pronunciation drill: score how clearly a known sentence came through."""
+    a = pron.assess_read_aloud(target, text, words)
+    m = metrics.compute(text, voice["window_seconds"] if voice else None)
+    voice_scores = audio_mod.voice_scores(voice) if voice else None
+    vals = [v for v in (voice_scores or {}).values() if v is not None]
+    delivery = int(round(sum(vals) / len(vals))) if vals else metrics.delivery_score(m)
+    overall = int(round(0.75 * a["accuracy"] + 0.25 * delivery))
+    good, fix = pron.feedback(a)
+    if voice:
+        vg, vf = audio_mod.feedback(voice, voice_scores)
+        good, fix = good + vg[:1], fix + vf[:1]
+    focus = (a["unclear"] + a["missed"] + [x["word"] for x in a["substituted"]])[:3]
+    return {
+        "kind": "read_aloud", "overall_score": overall, "scores": {}, "metrics": m,
+        "pronunciation": a, "delivery_score": delivery, "strengths": good[:3], "improvements": fix[:4],
+        "coaching_hint": ("Click each highlighted word to hear it, copy the stressed syllable, then read the sentence again."
+                          if focus else "Clean read. Try the next sentence, or read this one 15% faster."),
+        "coaching_questions": [], "suggested_outline": [], "structure_map": [],
+        "next_challenge": f"Practise these words in isolation, then in the sentence: {', '.join(focus)}." if focus
+        else "Move to the next sentence in this set.",
+        "voice": ({**voice, "scores": voice_scores} if voice else None), "challenge_mode": False,
+        "provider": "local:pronunciation", "warning": None, "mode": "Read aloud",
+        "framework_name": "Read aloud", "framework_coverage": None,
+        "filler_count": m["filler_count"], "word_count": m["word_count"], "estimated_seconds": m["seconds"],
+    }
+
+
 def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
-            duration_seconds: float | None = None, spec: dict | None = None, voice: dict | None = None) -> dict:
+            duration_seconds: float | None = None, spec: dict | None = None, voice: dict | None = None,
+            words: list[dict] | None = None, daily_words: list[str] | None = None) -> dict:
     """spec overrides the mode's framework/rubric/target (used by lessons).
     voice = acoustic report from coach.audio.analyze (real recording) — drives delivery scoring."""
     mode = normalize_mode(mode)
@@ -348,6 +417,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
             scores["delivery"] = int(round(0.4 * scores["delivery"] + 0.6 * sum(vals) / len(vals)))
     fb = heuristic_feedback(mode, m, scores, h["structure_map"], challenge, spec)
     structure_map = h["structure_map"]
+    language = language_report(text, words, challenge, daily_words)
     provider, warning = "local:heuristic", None
 
     if llm.active_provider() != "local":
@@ -372,6 +442,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
             for key in ("coaching_hint", "next_challenge"):
                 if isinstance(data.get(key), str) and data[key].strip():
                     fb[key] = data[key].strip()
+            _merge_llm_language(language, data, challenge)
         except Exception as e:  # network, auth, bad JSON — never break the practice loop
             log.warning("LLM analysis failed, using local fallback: %s", e)
             provider = "local:heuristic"
@@ -381,6 +452,10 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         vgood, vfix = audio_mod.feedback(voice, voice_scores)
         fb["strengths"] = (vgood[:1] + fb["strengths"])[:4]
         fb["improvements"] = (vfix[:2] + fb["improvements"])[:5]
+
+    lgood, lfix = lang.feedback(language["vocabulary"], language["sentences"], challenge)
+    fb["strengths"] = (fb["strengths"] + lgood[:1])[:4]
+    fb["improvements"] = (fb["improvements"] + lfix[:2])[:6]
 
     if challenge:
         fb["suggested_outline"] = []  # hard guarantee: Challenge Mode never hands over an answer
@@ -398,6 +473,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
                                     / max(1, len(structure_map)), 2),
         "challenge_mode": challenge,
         "voice": ({**voice, "scores": voice_scores} if voice else None),
+        "language": language,
         "provider": provider,
         "warning": warning,
         # legacy keys kept for older history entries / clients

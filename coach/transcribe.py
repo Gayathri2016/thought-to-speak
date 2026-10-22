@@ -5,6 +5,9 @@ installed → none (the browser's live transcript is used instead).
 
 Whisper normally "cleans up" disfluencies. The initial prompt below is written in a disfluent style,
 which biases it to keep um / uh / like — exactly what a speaking coach needs to count.
+For read-aloud drills the target sentence is deliberately NOT passed as a prompt: biasing the
+recognizer toward the expected words would hide the very mispronunciations we want to catch.
+Local faster-whisper also returns per-word confidence, used to flag unclear words.
 """
 import logging
 import os
@@ -78,5 +81,6 @@ def _local(path):
         for seg in segments:
             texts.append(seg.text)
             for w in seg.words or []:
-                words.append({"word": w.word, "start": float(w.start), "end": float(w.end)})
+                words.append({"word": w.word, "start": float(w.start), "end": float(w.end),
+                              "probability": round(float(w.probability), 3)})
     return {"text": "".join(texts).strip(), "words": words, "source": f"local:faster-whisper {name}"}

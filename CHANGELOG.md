@@ -1,5 +1,18 @@
 # Changelog
 
+## v5 — pronunciation, vocabulary and sentence structure
+- New **Pronounce** tab: 7 read-aloud drill sets with minimal pairs, stress guide and text-to-speech.
+- Read-aloud scoring: word-by-word alignment (clear / unclear / swapped / missed), sound-swap detection via the
+  CMU Pronouncing Dictionary, per-sound accuracy over time, trouble words.
+- Stress & respelling for any word (bundled CMU dictionary subset + technical-word lexicon).
+- Vocabulary analysis: variety, precise-word share (wordfreq), weak/vague wording with alternatives, repeats.
+- Sentence analysis: lengths (punctuation or pauses), run-ons, repeated openers, passive voice, grammar checks.
+- AI (when configured) adds word upgrades, grammar notes and a sentence tip; hidden fixes in Challenge Mode.
+- Word bank: 3 words of the day, usage tracked automatically.
+- New **Speak Clearly** journey (9 lessons) incl. read-aloud lessons with pronunciation pass checks.
+- Today's session adds a pronunciation drill targeting your weakest sound; Progress adds a Language skills section.
+- Lessons moved to `content/journeys/`.
+
 ## v4 — real audio
 - Records the actual audio in the browser (AudioWorklet → 16 kHz mono WAV) alongside the live transcript.
 - Waveform analysis with numpy: pauses (natural / long / stalls), speaking vs. silent time, pace every 10 s,
