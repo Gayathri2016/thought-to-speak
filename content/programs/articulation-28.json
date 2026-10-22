@@ -1,0 +1,2253 @@
+{
+ "id": "articulation-28",
+ "title": "Articulation Mastery in 28 Days",
+ "tagline": "One skill a day, about 10 minutes. Speak with clarity and confidence in four weeks.",
+ "description": "A daily program: each day teaches one real-world speaking skill, then you practise it out loud and get coached. A new day unlocks each morning after you pass the previous one.",
+ "milestones": [
+  {
+   "day": 7,
+   "when": "In 1 week",
+   "title": "you'll lead with clarity"
+  },
+  {
+   "day": 14,
+   "when": "In 2 weeks",
+   "title": "you'll impress your colleagues"
+  },
+  {
+   "day": 21,
+   "when": "In 3 weeks",
+   "title": "you'll think on your feet"
+  },
+  {
+   "day": 28,
+   "when": "In 1 month",
+   "title": "career-ready articulation"
+  }
+ ],
+ "modules": [
+  {
+   "id": "w1",
+   "title": "Week 1 · Lead with clarity",
+   "goal": "Introduce yourself, contribute, explain, persuade and handle pressure.",
+   "lessons": [
+    {
+     "id": "am01",
+     "day": 1,
+     "title": "Confident introductions",
+     "minutes": 8,
+     "skill": "confidence",
+     "summary": "Introduce yourself in 30 seconds so people remember what you do and why it matters.",
+     "concept": [
+      "Most introductions are a job title followed by a list. Listeners forget lists. They remember one clear identity line, one proof point and one direction.",
+      "Present → Past → Future gives you that shape: who you are now, the one experience that earned it, and what you're focused on next. It works in interviews, meetings and networking events.",
+      "Confidence isn't volume — it's not apologising. Drop “just”, “kind of” and “I guess”, and end on a full stop, not a question."
+     ],
+     "framework": {
+      "name": "Present · Past · Future",
+      "steps": [
+       {
+        "label": "Opening line",
+        "desc": "Who you are now, in one sentence: role + what you're known for."
+       },
+       {
+        "label": "Body",
+        "desc": "One past experience that proves it — with a specific result."
+       },
+       {
+        "label": "Close",
+        "desc": "What you're focused on or looking for next."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Starter: “I'm a … who …” — not “So, um, I've been doing a lot of things…”",
+      "One proof point beats five responsibilities.",
+      "Name a number in your proof point (users, %, weeks, $).",
+      "End with the future so the listener knows what to talk to you about."
+     ],
+     "example": {
+      "prompt": "A new skip-level manager says: “Tell me a bit about yourself.”",
+      "before": "So, um, I'm on the platform team, I've been here a while, I do a lot of backend stuff, some data work, I kind of help out with on-call and things like that…",
+      "after": "I'm a backend engineer who owns our rewards redemption service. Last year I rebuilt its checkout path and cut failed redemptions by 40%. Right now I'm focused on making it real-time, so I'd love your view on where it fits in next year's roadmap.",
+      "why": "Identity in one line, one quantified proof, and a forward-looking close that opens a conversation."
+     },
+     "exercise": {
+      "mode": "Interview",
+      "instructions": "Introduce yourself in 30–45 seconds using Present → Past → Future. No apologising, no lists.",
+      "prompts": [
+       "Introduce yourself at the start of a job interview.",
+       "Introduce yourself to a new team you've just joined.",
+       "Introduce yourself to someone you meet at an industry event."
+      ],
+      "constraint": "One sentence each for present, past and future.",
+      "target_seconds": [
+       25,
+       50
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        },
+        {
+         "metric": "metrics.filler_rate",
+         "op": "<=",
+         "value": 3,
+         "label": "Under 3 fillers per 100 words"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am02",
+     "day": 2,
+     "title": "Clear meeting contributions",
+     "minutes": 8,
+     "skill": "clarity",
+     "summary": "Speak up in meetings with one point, one reason and one next step — in under 40 seconds.",
+     "concept": [
+      "In meetings people often think out loud: they circle the topic, then land on the point after a minute. By then the conversation has moved on.",
+      "A strong contribution is short and complete: your point, the single best reason for it, and what you suggest happens next. Three sentences is enough.",
+      "Signal that you're making a point (“My suggestion is…”), so people know when to listen."
+     ],
+     "framework": {
+      "name": "Point · Reason · Next step",
+      "steps": [
+       {
+        "label": "Point",
+        "desc": "Your view or suggestion in one sentence."
+       },
+       {
+        "label": "Reason",
+        "desc": "The single strongest reason — not all of them."
+       },
+       {
+        "label": "Next step",
+        "desc": "A concrete action, owner or decision."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Starter: “My suggestion is…” / “I'd push for…”",
+      "Pick your best reason. Two weaker reasons dilute the first.",
+      "End with an action: “Can we decide by Friday?”",
+      "If someone already said it, build on it: “To add to Priya's point…”"
+     ],
+     "example": {
+      "prompt": "Your team is debating whether to add a feature flag before launch.",
+      "before": "Yeah, I mean, I think it's kind of risky, there's a lot going on, the release is big, we've had issues before, so maybe we should think about flags, or not, depends…",
+      "after": "My suggestion is we ship behind a feature flag. The release touches checkout, and a flag lets us roll back in seconds instead of redeploying. Next step: I'll add the flag today, and we turn it on for 5% on Monday.",
+      "why": "The point comes first, one decisive reason, and a next step with an owner and a date."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Make one meeting contribution: point, reason, next step. Stop after the next step.",
+      "prompts": [
+       "Your team is choosing between two tools. Give your view.",
+       "A meeting is running long. Suggest how to wrap it up.",
+       "Someone proposes delaying a launch by a week. Respond."
+      ],
+      "constraint": "Three parts, under 40 seconds.",
+      "target_seconds": [
+       20,
+       40
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 60,
+         "label": "Clarity ≥ 60"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am03",
+     "day": 3,
+     "title": "Explaining complex ideas",
+     "minutes": 10,
+     "skill": "explanation",
+     "summary": "Explain something complicated so a smart non-expert gets it the first time.",
+     "concept": [
+      "Experts explain in the order they learned: details first, purpose last. Non-experts need the opposite — the big idea, a picture they already know, and why they should care.",
+      "Climb down the abstraction ladder: one-sentence idea → concrete analogy → what it means for them. Leave out every term the listener doesn't need.",
+      "If you must use a technical word, define it in the same sentence."
+     ],
+     "framework": {
+      "name": "Idea · Example · Why it matters",
+      "steps": [
+       {
+        "label": "Big idea",
+        "desc": "What it is, in plain words, in one sentence."
+       },
+       {
+        "label": "Concrete example",
+        "desc": "An analogy or example from everyday life."
+       },
+       {
+        "label": "Why it matters",
+        "desc": "What it changes for this listener."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Starter: “In simple terms, X is…”",
+      "Analogy test: could a 12-year-old picture it?",
+      "One technical term maximum — and define it.",
+      "Finish with the listener's benefit, not the mechanism."
+     ],
+     "example": {
+      "prompt": "A product manager asks: “What is a cache?”",
+      "before": "A cache is a high-speed data storage layer that stores a subset of data, typically transient, so future requests are served faster than accessing the primary storage location, using eviction policies like LRU…",
+      "after": "In simple terms, a cache is a short-term memory for data. Think of keeping your most-used spices on the counter instead of in the basement. For you, it means pages load in milliseconds instead of seconds — but sometimes users see data that's a few minutes old.",
+      "why": "Plain definition, a picture anyone knows, and the trade-off that matters to this listener."
+     },
+     "exercise": {
+      "mode": "Technical Explanation",
+      "instructions": "Explain the concept to a smart non-expert in under 75 seconds: idea, example, why it matters.",
+      "prompts": [
+       "Explain what an API is to a new marketing hire.",
+       "Explain machine learning to a family member.",
+       "Explain why a database migration is risky to a sales leader."
+      ],
+      "constraint": "No undefined jargon. Include an analogy.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 64,
+         "label": "Clarity ≥ 64"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am04",
+     "day": 4,
+     "title": "Persuasive argument structuring",
+     "minutes": 10,
+     "skill": "persuasion",
+     "summary": "Make a case people agree with: point, reason, example, point again.",
+     "concept": [
+      "Persuasion isn't more arguments — it's a structure the listener can follow and repeat to someone else.",
+      "PREP gives you that: state your Point, give the Reason, prove it with an Example, then restate the Point so it's the last thing they hear.",
+      "The example does the persuading. A specific story or number beats a general claim every time."
+     ],
+     "framework": {
+      "name": "PREP",
+      "steps": [
+       {
+        "label": "Point",
+        "desc": "Your position in one sentence."
+       },
+       {
+        "label": "Reason",
+        "desc": "Why — the single strongest reason."
+       },
+       {
+        "label": "Example",
+        "desc": "A specific case, story or number that proves it."
+       },
+       {
+        "label": "Point again",
+        "desc": "Restate the position, sharper."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Starter: “I believe we should…, because…”",
+      "Example = names, numbers, dates. “Last quarter…”",
+      "Restate with “That's why…”",
+      "Don't argue three reasons. Win with one."
+     ],
+     "example": {
+      "prompt": "Convince your manager to invest in automated testing.",
+      "before": "Testing is important, everyone knows that, and it improves quality and saves time, and it's best practice, and other teams do it, so we should probably do more of it.",
+      "after": "I believe we should spend two sprints on automated tests, because manual testing is now our release bottleneck. Last month, three of our four releases slipped by a day waiting for manual QA. That's why two sprints of test automation will pay for itself within a quarter.",
+      "why": "A clear position, one reason, a concrete example with numbers, and a sharper restatement."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Argue your position with PREP in 45–75 seconds.",
+      "prompts": [
+       "Convince your team to adopt code reviews within 24 hours.",
+       "Argue for or against a four-day work week.",
+       "Persuade your manager to send you to a conference."
+      ],
+      "constraint": "All four PREP parts. The example must be specific.",
+      "target_seconds": [
+       45,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 PREP parts"
+        },
+        {
+         "metric": "scores.structure",
+         "op": ">=",
+         "value": 62,
+         "label": "Structure ≥ 62"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am05",
+     "day": 5,
+     "title": "Engaging presentation hooks",
+     "minutes": 8,
+     "skill": "presence",
+     "summary": "Open any talk with a hook that earns the next two minutes of attention.",
+     "concept": [
+      "You have about ten seconds before an audience decides whether to listen. “Hi, today I'm going to talk about…” spends those seconds on nothing.",
+      "A hook is a question, a surprising fact, or a tiny story that creates a gap the listener wants closed. Then you name your message and preview where you're going.",
+      "Write your first sentence word for word. It's the one you'll be most nervous saying."
+     ],
+     "framework": {
+      "name": "Hook · Message · Preview",
+      "steps": [
+       {
+        "label": "Hook",
+        "desc": "A question, surprising fact or 1-sentence story."
+       },
+       {
+        "label": "Message",
+        "desc": "The one idea the talk is about."
+       },
+       {
+        "label": "Preview",
+        "desc": "The two or three points you'll cover."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Open with “Imagine…”, “What if…”, or a number.",
+      "Never open with your name and the agenda.",
+      "Message in one sentence: “My point today is…”",
+      "Preview with a count: “three things”."
+     ],
+     "example": {
+      "prompt": "Open a team talk on reducing meetings.",
+      "before": "Hi everyone, thanks for having me. Today I'm going to talk about meetings, and some thoughts I had about them, and hopefully it's useful.",
+      "after": "Last month, our team spent 412 hours in meetings — that's ten full work weeks. My point today is that we can cut that in half without losing anything that matters. I'll show you three changes: shorter defaults, written updates, and a no-meeting Wednesday.",
+      "why": "A surprising number as the hook, one clear message, and a three-part preview."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Deliver only the opening of a talk: hook, message, preview. 30–50 seconds.",
+      "prompts": [
+       "Open a talk about why every engineer should learn to write well.",
+       "Open a presentation proposing a new onboarding program.",
+       "Open a 5-minute talk about a hobby you love."
+      ],
+      "constraint": "No “Hi, today I'm going to talk about…”",
+      "target_seconds": [
+       25,
+       50
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "voice.volume.trails_off",
+         "op": "==",
+         "value": false,
+         "label": "Last sentence as loud as the first",
+         "audio": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am06",
+     "day": 6,
+     "title": "Handling tough questions",
+     "minutes": 10,
+     "skill": "composure",
+     "summary": "Stay calm under pressure: acknowledge, bridge, answer.",
+     "concept": [
+      "A hard question triggers two bad reflexes: defend immediately, or ramble until you find an answer.",
+      "Acknowledge–Bridge–Answer buys you two seconds and keeps you credible. Acknowledge the concern honestly, bridge to what you can say, then answer directly.",
+      "If you don't know, say so and commit to a follow-up — that's an answer too."
+     ],
+     "framework": {
+      "name": "Acknowledge · Bridge · Answer",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "Show you heard the concern — without agreeing to the premise."
+       },
+       {
+        "label": "Bridge",
+        "desc": "Move to what you can speak to."
+       },
+       {
+        "label": "Answer",
+        "desc": "A direct answer, or what you'll find out and when."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“That's a fair concern.” / “I understand why you'd ask.”",
+      "Bridge: “What I can tell you is…”",
+      "Pause before answering. Silence reads as thoughtfulness.",
+      "Never: “That's a good question” followed by no answer."
+     ],
+     "example": {
+      "prompt": "A customer says: “Your last release broke our integration. Why should we trust the next one?”",
+      "before": "Well, it wasn't really our fault, the API change was announced, and, um, most customers were fine, so…",
+      "after": "That's a fair concern — the outage cost you a day, and I'm sorry. What I can tell you is what changed: every release now runs against your integration in a staging environment first. The direct answer: you won't be surprised again, and I'll send you the test results before the next release.",
+      "why": "Owns the impact, bridges to facts, gives a concrete commitment."
+     },
+     "exercise": {
+      "mode": "FDE / Customer",
+      "instructions": "Answer the tough question with Acknowledge → Bridge → Answer in under 60 seconds.",
+      "prompts": [
+       "“Why is this project three weeks late?”",
+       "“Your price is 30% higher than your competitor. Why?”",
+       "“Why should we hire you when you don't have experience with our stack?”"
+      ],
+      "constraint": "Don't get defensive. Answer the actual question.",
+      "target_seconds": [
+       30,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 2,
+         "label": "At most 2 hedges"
+        },
+        {
+         "metric": "voice.stalls",
+         "op": "<=",
+         "value": 0,
+         "label": "No stalls over 2.5 s",
+         "audio": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am07",
+     "day": 7,
+     "title": "Constructive feedback delivery",
+     "minutes": 10,
+     "skill": "leadership",
+     "summary": "Give feedback that's specific, kind and actionable using Situation, Behavior, Impact, Request.",
+     "concept": [
+      "Vague feedback (“be more proactive”) feels like criticism of the person. Specific feedback is about an event the person can change.",
+      "SBI names the situation, describes the observable behavior, explains its impact — then makes a clear request. No labels, no adjectives about character.",
+      "Feedback should be short. If it takes three minutes, it's a lecture."
+     ],
+     "framework": {
+      "name": "SBI + Request",
+      "steps": [
+       {
+        "label": "Situation",
+        "desc": "When and where: one specific moment."
+       },
+       {
+        "label": "Behavior",
+        "desc": "What they did — something a camera could record."
+       },
+       {
+        "label": "Impact",
+        "desc": "What it caused, for the team or the work."
+       },
+       {
+        "label": "Request",
+        "desc": "What you'd like next time."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Start with the moment: “In Tuesday's demo…”",
+      "Behavior is observable: “you interrupted twice”, not “you were rude”.",
+      "Impact is about effects, not feelings you assign to them.",
+      "Request: “Next time, could you…?”"
+     ],
+     "example": {
+      "prompt": "A teammate keeps merging without tests.",
+      "before": "You need to be more careful, honestly. It's kind of sloppy and people are noticing.",
+      "after": "In yesterday's release, you merged the payments change without tests. That meant QA found the bug in staging and we lost half a day. Next time, could you add at least the happy-path test before merging?",
+      "why": "One specific moment, observable behavior, concrete impact, and a clear, doable request."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Deliver feedback with SBI + Request in 30–60 seconds.",
+      "prompts": [
+       "A peer often joins meetings late.",
+       "Your report wrote an excellent design doc — give positive feedback.",
+       "A colleague dominates discussions and others stop contributing."
+      ],
+      "constraint": "No character labels. One specific moment.",
+      "target_seconds": [
+       25,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.5,
+         "label": "Hit at least 2 of 4 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 62,
+         "label": "Clarity ≥ 62"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "w2",
+   "title": "Week 2 · Impress your colleagues",
+   "goal": "Listen, write, network, sound confident and lead the room.",
+   "lessons": [
+    {
+     "id": "am08",
+     "day": 8,
+     "title": "Active listening for rapport",
+     "minutes": 8,
+     "skill": "listening",
+     "summary": "Make people feel heard: acknowledge, play it back, ask a deeper question.",
+     "concept": [
+      "Most people listen to reply. Rapport comes from proving you listened — out loud.",
+      "Acknowledge what they said, restate the problem in your own words, then ask one question that goes a level deeper. You'll learn more and say less.",
+      "Your restatement is a check: if it's wrong, they'll correct you, and you've avoided a misunderstanding."
+     ],
+     "framework": {
+      "name": "Acknowledge · Restate · Ask",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "Show you heard them."
+       },
+       {
+        "label": "Restate problem",
+        "desc": "Play back what you heard in your own words."
+       },
+       {
+        "label": "Question",
+        "desc": "One open question that goes deeper."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“What I'm hearing is…” / “If I understand you right…”",
+      "Open questions start with what, how, or tell me.",
+      "Don't solve yet. Today is about listening.",
+      "One question, then stop talking."
+     ],
+     "example": {
+      "prompt": "A stakeholder says: “The dashboard is useless. Nobody on my team opens it.”",
+      "before": "Oh, well, it has a lot of features actually, maybe they just need training, I can send the docs.",
+      "after": "I hear you — if nobody opens it, it isn't doing its job. What I'm hearing is the dashboard doesn't answer the questions your team actually has. What's the first question they ask on a Monday morning?",
+      "why": "No defending. A playback that names the real problem, then one open question."
+     },
+     "exercise": {
+      "mode": "FDE / Customer",
+      "instructions": "Respond to the statement as an active listener: acknowledge, restate, ask one open question.",
+      "prompts": [
+       "A customer says: “Your onboarding takes way too long.”",
+       "A teammate says: “I feel like my work isn't visible.”",
+       "Your manager says: “The client is unhappy and I'm not sure why.”"
+      ],
+      "constraint": "Don't propose a solution. End on a question.",
+      "target_seconds": [
+       20,
+       45
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.relevance",
+         "op": ">=",
+         "value": 60,
+         "label": "Relevance ≥ 60"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am09",
+     "day": 9,
+     "title": "Polished email communication",
+     "minutes": 8,
+     "skill": "writing",
+     "summary": "Say your email out loud before you write it: bottom line, context, ask.",
+     "concept": [
+      "Clear writing starts as clear speaking. If you can't say your email in 30 seconds, it isn't ready to send.",
+      "The best emails read like a good spoken answer: the subject-line conclusion first, the minimum context, and one explicit ask with a date.",
+      "Today you'll dictate an email. The transcript is your first draft."
+     ],
+     "framework": {
+      "name": "Bottom line · Context · Ask",
+      "steps": [
+       {
+        "label": "Bottom line",
+        "desc": "What you want them to know or do — first sentence."
+       },
+       {
+        "label": "Context",
+        "desc": "Only the facts needed to act."
+       },
+       {
+        "label": "Next step",
+        "desc": "One clear ask with a deadline."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "First sentence = what would go in the subject line.",
+      "Context: max three facts.",
+      "Ask with a date: “Could you approve by Thursday?”",
+      "Read it back — would a busy person act on it from the preview alone?"
+     ],
+     "example": {
+      "prompt": "Email your manager asking for budget for a tool.",
+      "before": "Hi! Hope you're well. I wanted to reach out about something I've been thinking about for a while regarding our tooling situation and some challenges we've had…",
+      "after": "I'm asking for $3,000 to buy a load-testing tool. We currently test capacity by hand, which takes two days per release and missed last month's slowdown. Could you approve this by Thursday, so I can set it up before the holiday traffic test?",
+      "why": "The ask is the first sentence, context is two facts, and the deadline has a reason."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Dictate the email out loud — as if speaking it to the person — in 30–50 seconds.",
+      "prompts": [
+       "Email a client to say a deliverable will be two days late.",
+       "Email your team announcing a process change.",
+       "Email a senior leader asking for 30 minutes of their time."
+      ],
+      "constraint": "The ask must be in the first sentence or the last.",
+      "target_seconds": [
+       25,
+       50
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 62,
+         "label": "Clarity ≥ 62"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am10",
+     "day": 10,
+     "title": "Networking conversation flow",
+     "minutes": 8,
+     "skill": "rapport",
+     "summary": "Keep a networking conversation going: open, connect, follow up.",
+     "concept": [
+      "Networking feels awkward because people pitch instead of connect. The goal of a first conversation is a second conversation.",
+      "Open with something easy, find a shared interest by asking about them, and close with a concrete follow-up.",
+      "People remember how curious you were more than what you said about yourself."
+     ],
+     "framework": {
+      "name": "Open · Connect · Follow up",
+      "steps": [
+       {
+        "label": "Opening line",
+        "desc": "A light, situational opener and who you are."
+       },
+       {
+        "label": "Connect",
+        "desc": "A question about them and a link to your own experience."
+       },
+       {
+        "label": "Next step",
+        "desc": "A specific way to continue the conversation."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Openers: “What brought you here today?”",
+      "Connect: “How did you get into…?” then “Same for me — …”",
+      "Ask twice as many questions as you answer.",
+      "Close: “Could I send you…?” / “Let's grab coffee next week.”"
+     ],
+     "example": {
+      "prompt": "You meet someone at a tech meetup.",
+      "before": "Hi. So, I'm an engineer. I work on backend things. Do you know of any jobs?",
+      "after": "Hi, I'm Maya — I build payment systems at a retail company. What brought you here tonight? … Oh, you're working on fraud detection — how did you get into that? That's close to what I do. Could I send you a write-up we did on false positives? I'd love to compare notes over coffee next week.",
+      "why": "An easy opener, genuine curiosity, a real connection, and a concrete follow-up."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Role-play your side of a networking conversation: open, connect, and propose a follow-up.",
+      "prompts": [
+       "You meet a senior engineer from a company you admire at a conference.",
+       "You're introduced to someone new from another team at an offsite.",
+       "You start talking to the speaker after a meetup talk."
+      ],
+      "constraint": "Ask at least one question about them.",
+      "target_seconds": [
+       30,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 2,
+         "label": "At most 2 hedges"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am11",
+     "day": 11,
+     "title": "Vocal presence & tone",
+     "minutes": 8,
+     "skill": "voice",
+     "summary": "Sound confident: steady pace, purposeful pauses, and a voice that rises and falls.",
+     "concept": [
+      "Listeners judge confidence from your voice before your words. A flat pitch sounds bored; rushing sounds nervous; trailing off sounds unsure.",
+      "Three habits fix most of it: slow down to about 140–160 words per minute, pause before and after your key point, and let your pitch move with meaning.",
+      "Record this one with the microphone — today the coach scores your voice, not just your words."
+     ],
+     "framework": {
+      "name": "Pace · Pause · Pitch",
+      "steps": [
+       {
+        "label": "Message",
+        "desc": "Say one clear message you care about."
+       },
+       {
+        "label": "Story / points",
+        "desc": "Support it with a short example."
+       },
+       {
+        "label": "Call-back close",
+        "desc": "Land it with a strong final sentence — full volume."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Breathe out before you start.",
+      "Pause for one full second after your main point.",
+      "Stress the one word that matters in each sentence.",
+      "Finish sentences downwards and strong — no upward question tone."
+     ],
+     "example": {
+      "prompt": "Tell your team why a project matters.",
+      "before": "(fast, flat, fading) So this project is important because it helps customers and it's going to be really good for the team and stuff…",
+      "after": "(steady, with pauses) This project matters. [pause] Right now, one in five customers gives up at checkout. [pause] If we fix that, we keep their trust — and their business. That's why I'm excited about it.",
+      "why": "Short sentences give room to pause; one stressed word per sentence; a strong final line."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Speak for 45–75 seconds about something you care about. Use the mic — your voice is scored.",
+      "prompts": [
+       "Why does your current project matter?",
+       "Describe a place that means a lot to you.",
+       "What's one piece of advice you'd give your younger self?"
+      ],
+      "constraint": "Pause at least twice on purpose.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 55,
+       "checks": [
+        {
+         "metric": "voice.scores.pace",
+         "op": ">=",
+         "value": 70,
+         "label": "Pace score ≥ 70",
+         "audio": true
+        },
+        {
+         "metric": "voice.scores.pitch_variety",
+         "op": ">=",
+         "value": 65,
+         "label": "Pitch variety ≥ 65",
+         "audio": true
+        },
+        {
+         "metric": "voice.volume.trails_off",
+         "op": "==",
+         "value": false,
+         "label": "Last sentence as loud as the first",
+         "audio": true
+        },
+        {
+         "metric": "voice.stalls",
+         "op": "<=",
+         "value": 0,
+         "label": "No stalls over 2.5 s",
+         "audio": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am12",
+     "day": 12,
+     "title": "Body language for authority",
+     "minutes": 8,
+     "skill": "presence",
+     "summary": "Stand, breathe and speak like someone people follow — and hear it in your voice.",
+     "concept": [
+      "Authority starts in the body: grounded feet, open shoulders, still hands, and eye contact at the ends of sentences. Your posture changes your breathing, and your breathing changes your voice.",
+      "This app listens rather than watches, so today's checks are what posture does to sound: full breath support (no trailing off), no rushing, and no long stalls.",
+      "Stand up for this exercise. Plant your feet, drop your shoulders, and keep your hands still at your sides or lightly together."
+     ],
+     "framework": {
+      "name": "Ground · Breathe · Deliver",
+      "steps": [
+       {
+        "label": "Bottom line",
+        "desc": "Your key message, said while still and grounded."
+       },
+       {
+        "label": "Context",
+        "desc": "The reason, delivered with an open posture."
+       },
+       {
+        "label": "Next step",
+        "desc": "A clear ask — the strongest line, at full volume."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Before you speak: feet planted, one slow breath out.",
+      "Hold still at the start of each sentence.",
+      "Look up (at the camera or a point) at the end of each sentence.",
+      "Your last sentence should be your loudest."
+     ],
+     "example": {
+      "prompt": "Announce a decision to your team.",
+      "before": "(slouched, quick) So, um, we kind of decided we're going to move the launch, sorry, it's a bit of a change…",
+      "after": "(standing, still) We're moving the launch to March 3rd. The payment partner needs two more weeks to certify, and launching without them would put revenue at risk. I need each lead to update their plan by Friday.",
+      "why": "No apology, a grounded delivery, and the strongest line saved for the ask."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Stand up. Deliver the announcement in 30–60 seconds with grounded posture. Use the mic.",
+      "prompts": [
+       "Announce a decision your team won't love.",
+       "Open a meeting with senior leaders in the room.",
+       "Present your project's status to a skeptical audience."
+      ],
+      "constraint": "Stand. No apologising. Strongest line last.",
+      "target_seconds": [
+       30,
+       60
+      ],
+      "pass": {
+       "overall": 55,
+       "checks": [
+        {
+         "metric": "voice.volume.trails_off",
+         "op": "==",
+         "value": false,
+         "label": "Last sentence as loud as the first",
+         "audio": true
+        },
+        {
+         "metric": "voice.stalls",
+         "op": "<=",
+         "value": 0,
+         "label": "No stalls over 2.5 s",
+         "audio": true
+        },
+        {
+         "metric": "voice.scores.pace",
+         "op": ">=",
+         "value": 70,
+         "label": "Pace score ≥ 70",
+         "audio": true
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am13",
+     "day": 13,
+     "title": "Leading team discussions",
+     "minutes": 10,
+     "skill": "leadership",
+     "summary": "Run a discussion that ends in a decision: frame it, invite views, close it.",
+     "concept": [
+      "Most discussions fail at the start (no clear goal) or the end (no decision). The person who frames and closes the conversation leads it, whatever their title.",
+      "Frame the goal and time box, invite specific people to contribute, then summarise and confirm the decision and owner.",
+      "Inviting quiet voices by name is one of the most visible leadership moves you can make."
+     ],
+     "framework": {
+      "name": "Frame · Invite · Decide",
+      "steps": [
+       {
+        "label": "Frame",
+        "desc": "The goal of the discussion and how long it will take."
+       },
+       {
+        "label": "Invite",
+        "desc": "Ask for views — by name where you can."
+       },
+       {
+        "label": "Decision / Ask",
+        "desc": "Summarise, decide, and name an owner."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Frame: “By the end of these 15 minutes, we'll have decided…”",
+      "Invite: “Sam, you haven't weighed in — what do you think?”",
+      "Close: “So we're going with…, and Lee owns it.”",
+      "If there's no consensus, decide how you'll decide."
+     ],
+     "example": {
+      "prompt": "Lead a discussion on choosing a sprint goal.",
+      "before": "So, um, what do people want to do this sprint? Anyone? I don't mind, whatever you all think.",
+      "after": "Our goal for the next 15 minutes is to pick one sprint goal. There are two options: the search revamp or the billing fixes. Ana, you've talked to customers — what are you hearing? … So we're going with billing fixes, and Raj owns the plan by tomorrow.",
+      "why": "Clear goal and time box, a named invitation, and a decision with an owner."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Open and close a team discussion (you can summarise the middle) in 45–75 seconds.",
+      "prompts": [
+       "Lead a retro on a release that went badly.",
+       "Run a discussion to choose next quarter's top priority.",
+       "Facilitate a debate between two engineers who disagree on an approach."
+      ],
+      "constraint": "Name the goal, invite someone, end with a decision and owner.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.structure",
+         "op": ">=",
+         "value": 60,
+         "label": "Structure ≥ 60"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am14",
+     "day": 14,
+     "title": "Negotiation phrasing",
+     "minutes": 10,
+     "skill": "negotiation",
+     "summary": "Ask for what you want without backing down or burning the relationship.",
+     "concept": [
+      "Most people negotiate against themselves: they soften their ask before the other side says a word (“I was wondering if maybe…”).",
+      "Acknowledge the other side's position, state your ask clearly with a reason, then offer a trade: “If you can…, then we can…”.",
+      "Silence after your ask is powerful. Say it, then stop."
+     ],
+     "framework": {
+      "name": "Acknowledge · Anchor · Trade",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "Show you understand their constraint."
+       },
+       {
+        "label": "Anchor",
+        "desc": "State your ask clearly, with a number and a reason."
+       },
+       {
+        "label": "Trade",
+        "desc": "Offer something in exchange: “if…, then…”."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Anchor first and specifically: “I'm looking for…”",
+      "Remove softeners: just, maybe, I was wondering.",
+      "Trade, don't concede: “If we…, would you…?”",
+      "After the ask — stop talking."
+     ],
+     "example": {
+      "prompt": "A client asks you to deliver a feature two weeks earlier at no extra cost.",
+      "before": "Um, that might be hard, but I guess we could maybe try? I'll see what I can do, no promises.",
+      "after": "I understand the launch date is fixed on your side. To deliver two weeks early, we'd need to move two engineers from another project, which costs us about $20,000. If you can cover half of that, then we can commit to the earlier date.",
+      "why": "Acknowledges their constraint, anchors with a number and reason, offers a clear trade."
+     },
+     "exercise": {
+      "mode": "FDE / Customer",
+      "instructions": "Respond to the negotiation in 30–60 seconds: acknowledge, anchor, trade.",
+      "prompts": [
+       "Negotiate a higher salary after a job offer.",
+       "Your manager asks you to take on a second project with the same deadline.",
+       "A vendor quotes a price 25% above your budget."
+      ],
+      "constraint": "Include a number. No softeners.",
+      "target_seconds": [
+       30,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 0,
+         "label": "At most 0 hedges"
+        },
+        {
+         "metric": "metrics.has_numbers",
+         "op": "==",
+         "value": true,
+         "label": "Includes a number"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "w3",
+   "title": "Week 3 · Think on your feet",
+   "goal": "Stories, impromptu answers, interviews, conflict and saying no.",
+   "lessons": [
+    {
+     "id": "am15",
+     "day": 15,
+     "title": "Storytelling for impact",
+     "minutes": 10,
+     "skill": "storytelling",
+     "summary": "Tell a short story with a hook, a turning point and a message people remember.",
+     "concept": [
+      "Facts inform; stories persuade. A good work story is short: a moment, a tension, a change, and a lesson.",
+      "Start in the middle of the action, not with background. Include one real detail — a name, a time, a line someone said.",
+      "End with the message, out loud. Don't make the audience guess."
+     ],
+     "framework": {
+      "name": "Hook · Story · Message",
+      "steps": [
+       {
+        "label": "Hook",
+        "desc": "Start in the moment: time, place, tension."
+       },
+       {
+        "label": "Story / points",
+        "desc": "What happened and the turning point."
+       },
+       {
+        "label": "Message",
+        "desc": "The lesson, in one sentence."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Start with: “It was 2 a.m. and…” / “I remember…”",
+      "One vivid detail beats five general ones.",
+      "Turning point: “That's when I realised…”",
+      "Message: “What I learned is…”"
+     ],
+     "example": {
+      "prompt": "Tell a story about learning from failure.",
+      "before": "So there was this time, I think a couple of years ago, when we had a project, and it didn't go so well, and we learned a lot from it, which was good.",
+      "after": "It was 2 a.m., and our checkout was down on the busiest night of the year. I had pushed the change. That's when I realised our deploy had no rollback button — just me and a terminal. We fixed it in 40 minutes. What I learned is that a rollback plan is part of the feature, not an afterthought.",
+      "why": "Starts in the tension, one vivid detail, a turning point, and an explicit message."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Tell a 60–90 second story with a hook, a turning point and a clear message.",
+      "prompts": [
+       "Tell a story about a mistake that taught you something.",
+       "Tell a story about someone who helped your career.",
+       "Tell a story about a time you changed your mind."
+      ],
+      "constraint": "Start in the action. Say the message explicitly.",
+      "target_seconds": [
+       60,
+       90
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "voice.scores.pitch_variety",
+         "op": ">=",
+         "value": 65,
+         "label": "Pitch variety ≥ 65",
+         "audio": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am16",
+     "day": 16,
+     "title": "Impromptu speaking mastery",
+     "minutes": 8,
+     "skill": "impromptu",
+     "summary": "Answer any question on the spot with a rule-of-three structure.",
+     "concept": [
+      "Impromptu panic comes from not knowing where you're going. A structure you can pick up instantly removes the panic.",
+      "The rule of three: state that you have three points, then give them. Saying “three” out loud commits you to a shape and buys thinking time.",
+      "Don't wait for perfect points. Two good points and an honest third is better than silence."
+     ],
+     "framework": {
+      "name": "Rule of three",
+      "steps": [
+       {
+        "label": "Preview",
+        "desc": "“There are three reasons / things…”"
+       },
+       {
+        "label": "First",
+        "desc": "Point one, with a quick example."
+       },
+       {
+        "label": "Second",
+        "desc": "Point two."
+       },
+       {
+        "label": "Third",
+        "desc": "Point three — then stop."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Start talking within 5 seconds.",
+      "Signpost: first, second, third.",
+      "Past–present–future is an easy three if you're stuck.",
+      "Close with one line, not a summary of all three."
+     ],
+     "example": {
+      "prompt": "Impromptu: “What makes a great teammate?”",
+      "before": "Hmm, um, that's a good question. I think, like, someone who's nice, and, um, helpful, and I guess, you know, good at their job…",
+      "after": "Three things. First, they make their work visible — you never have to ask for status. Second, they're generous with context, so others can move fast. Third, they disagree in the room, not after it. That's the person I want on every project.",
+      "why": "Instant preview, three signposted points, one closing line."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Hit the button and answer immediately with three points. 45–75 seconds, no preparation.",
+      "prompts": [
+       "What's the most important skill for your career?",
+       "What would you change about how your company runs meetings?",
+       "What's a book, film or idea that changed how you think?"
+      ],
+      "constraint": "Start within 5 seconds. Say “three”.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 parts"
+        },
+        {
+         "metric": "metrics.filler_rate",
+         "op": "<=",
+         "value": 3,
+         "label": "Under 3 fillers per 100 words"
+        },
+        {
+         "metric": "voice.stalls",
+         "op": "<=",
+         "value": 0,
+         "label": "No stalls over 2.5 s",
+         "audio": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am17",
+     "day": 17,
+     "title": "Interview response clarity",
+     "minutes": 10,
+     "skill": "interviewing",
+     "summary": "Answer behavioral interview questions with crisp, quantified STAR stories.",
+     "concept": [
+      "Interviewers hear dozens of answers a day. They remember the ones that are concrete, structured and about what you did — not what “we” did.",
+      "STAR keeps you on track: a short Situation, your Task, the Actions you took (most of your time), and a measurable Result.",
+      "Spend about 60% of your answer on Action. Keep Situation to two sentences."
+     ],
+     "framework": {
+      "name": "STAR",
+      "steps": [
+       {
+        "label": "Situation",
+        "desc": "Two sentences of context."
+       },
+       {
+        "label": "Task",
+        "desc": "Your responsibility or goal."
+       },
+       {
+        "label": "Action",
+        "desc": "What you did — “I”, not “we”."
+       },
+       {
+        "label": "Result",
+        "desc": "The outcome, with a number."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Say “I” for your actions.",
+      "Result with a number: %, time saved, revenue, users.",
+      "Keep it under two minutes.",
+      "Optional: add one line on what you learned."
+     ],
+     "example": {
+      "prompt": "“Tell me about a time you improved a process.”",
+      "before": "So we had this process that was slow, and the team worked on it, and we made it better, and everyone was happy with how it turned out.",
+      "after": "At my last company, releases took two days of manual checks. My task was to cut that without adding risk. I mapped every manual step, automated the six most repetitive, and set up a release checklist in CI. As a result, releases dropped to three hours and we went from weekly to daily deploys.",
+      "why": "Short situation, clear ownership, specific actions, a quantified result."
+     },
+     "exercise": {
+      "mode": "Interview",
+      "instructions": "Answer the interview question with STAR in 60–120 seconds.",
+      "prompts": [
+       "Tell me about a time you handled a difficult stakeholder.",
+       "Tell me about a project you're most proud of.",
+       "Tell me about a time you failed."
+      ],
+      "constraint": "Use “I”. End with a number.",
+      "target_seconds": [
+       60,
+       120
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 STAR parts"
+        },
+        {
+         "metric": "metrics.has_numbers",
+         "op": "==",
+         "value": true,
+         "label": "Includes a number"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 2,
+         "label": "At most 2 hedges"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am18",
+     "day": 18,
+     "title": "Conflict resolution dialogue",
+     "minutes": 10,
+     "skill": "conflict",
+     "summary": "Turn a disagreement into a shared problem: acknowledge, find common interests, agree a next step.",
+     "concept": [
+      "Conflicts stall when each side defends a position. They move when you find the interest underneath — what both people actually need.",
+      "Acknowledge their view without conceding, name what you both want, then propose a step you can try together.",
+      "Use “and” instead of “but”. “But” erases everything before it."
+     ],
+     "framework": {
+      "name": "Acknowledge · Common ground · Next step",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "State their view fairly."
+       },
+       {
+        "label": "Interests",
+        "desc": "Name what you both want."
+       },
+       {
+        "label": "Next step",
+        "desc": "A small step to try together."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“I understand you're worried about…”",
+      "“We both want…”",
+      "Swap “but” for “and”.",
+      "Propose a trial, not a final verdict: “Let's try it for two weeks.”"
+     ],
+     "example": {
+      "prompt": "A designer and you disagree about cutting a feature for launch.",
+      "before": "Look, I get it, but we just don't have time, so it has to go. That's just reality.",
+      "after": "I understand you're worried the launch will feel unfinished without it — that's fair. We both want customers to love this on day one, and we both want to hit the date. Let's ship the simple version now, and I'll put the full version first in next sprint. Can we test it with five users this week?",
+      "why": "Fair acknowledgment, a shared interest, and a small, concrete next step."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Talk through the conflict in 45–75 seconds: acknowledge, common ground, next step.",
+      "prompts": [
+       "Two teammates want different technical approaches and asked you to weigh in.",
+       "A product manager keeps adding scope late in the sprint.",
+       "A colleague took credit for your idea in a meeting."
+      ],
+      "constraint": "Say what you both want.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.relevance",
+         "op": ">=",
+         "value": 55,
+         "label": "Relevance ≥ 55"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am19",
+     "day": 19,
+     "title": "Explaining decisions & trade-offs",
+     "minutes": 10,
+     "skill": "clarity",
+     "summary": "Explain a decision so people trust it — including what you gave up.",
+     "concept": [
+      "People accept decisions they didn't make when they understand the reasoning and see the cost was considered.",
+      "State the decision, the main reason, the trade-off you accepted, and what happens next.",
+      "Naming the downside yourself makes you more credible, not less."
+     ],
+     "framework": {
+      "name": "Decision · Why · Trade-off · Next",
+      "steps": [
+       {
+        "label": "Decision / Ask",
+        "desc": "What you decided."
+       },
+       {
+        "label": "Why",
+        "desc": "The main reason."
+       },
+       {
+        "label": "Trade-offs",
+        "desc": "What you gave up, and why it's worth it."
+       },
+       {
+        "label": "Next steps",
+        "desc": "What happens now."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“We decided to…, because…”",
+      "Trade-off: “The cost is…, and that's acceptable because…”",
+      "One reason, one trade-off.",
+      "End with timeline and owner."
+     ],
+     "example": {
+      "prompt": "Explain why you chose a managed database over self-hosting.",
+      "before": "We went with the managed one. It's better. It was the right call, trust me.",
+      "after": "We decided to move to a managed database, because our on-call load is our biggest risk this year. The trade-off is about 30% higher cost, which is less than one engineer's time spent on maintenance. Next step: we migrate the reporting database first, by end of month.",
+      "why": "Decision, reason, an honest trade-off with numbers, and a next step."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Explain a decision in 45–75 seconds, including the trade-off.",
+      "prompts": [
+       "Explain why you're delaying a feature customers asked for.",
+       "Explain why your team is rewriting a service instead of patching it.",
+       "Explain a hiring decision to a candidate's referrer."
+      ],
+      "constraint": "Name the trade-off explicitly.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 62,
+         "label": "Clarity ≥ 62"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am20",
+     "day": 20,
+     "title": "Status updates executives remember",
+     "minutes": 8,
+     "skill": "clarity",
+     "summary": "Give a 45-second update: what happened, why it matters, what's next.",
+     "concept": [
+      "Executives don't need your activity log. They need to know whether to worry and what you need from them.",
+      "What / So what / Now what: the fact, its significance, and the next action. In that order.",
+      "Lead with status in one word if you can: on track, at risk, or blocked."
+     ],
+     "framework": {
+      "name": "What · So what · Now what",
+      "steps": [
+       {
+        "label": "What",
+        "desc": "What happened — the headline fact."
+       },
+       {
+        "label": "So what",
+        "desc": "Why it matters: impact, risk, or opportunity."
+       },
+       {
+        "label": "Now what",
+        "desc": "The next step, and any ask."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Open with status: “We're at risk on…”",
+      "So what = impact on revenue, customers, dates, or risk.",
+      "One ask, clearly labelled.",
+      "No acronyms the room doesn't share."
+     ],
+     "example": {
+      "prompt": "Your CTO asks for a status on the data migration.",
+      "before": "So this week we did a lot — we finished the schema work, had some meetings with the data team, fixed a couple of bugs, and Raj was out, so…",
+      "after": "We're at risk on the data migration: it's one week behind. That matters because finance closes the quarter on the new system. The plan is to run both systems in parallel for one extra week; I need your approval for the extra infrastructure cost by Friday.",
+      "why": "Status first, impact second, a plan and a clear ask last."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Give the status update in under 50 seconds.",
+      "prompts": [
+       "Update leadership on a project that's on track.",
+       "Update your VP on an outage from last night.",
+       "Update a client on a delayed deliverable."
+      ],
+      "constraint": "Start with the status. End with the ask.",
+      "target_seconds": [
+       25,
+       50
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 64,
+         "label": "Clarity ≥ 64"
+        },
+        {
+         "metric": "metrics.filler_rate",
+         "op": "<=",
+         "value": 3,
+         "label": "Under 3 fillers per 100 words"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am21",
+     "day": 21,
+     "title": "Saying no diplomatically",
+     "minutes": 8,
+     "skill": "boundaries",
+     "summary": "Decline a request while protecting the relationship and offering a path forward.",
+     "concept": [
+      "Saying yes to everything makes you unreliable. A clear, kind no is a professional skill.",
+      "Acknowledge the request, say no with a short reason, then offer an alternative: a different time, scope or person.",
+      "Don't over-explain. Long justifications sound like guilt and invite negotiation."
+     ],
+     "framework": {
+      "name": "Acknowledge · No + reason · Alternative",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "Show you understand why it matters to them."
+       },
+       {
+        "label": "Reason",
+        "desc": "Say no, with one short reason."
+       },
+       {
+        "label": "Alternative",
+        "desc": "What you can offer instead."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“I can see why this is urgent.”",
+      "“I can't take this on this week, because…”",
+      "“What I can do is…”",
+      "Keep the no under 10 seconds."
+     ],
+     "example": {
+      "prompt": "A director asks you to join a new working group on top of your project.",
+      "before": "Oh, um, I'd love to, I mean, I'm really busy, but maybe I can find time, I don't want to let anyone down…",
+      "after": "I can see why this group matters, and I'm glad you thought of me. I can't join right now, because the migration needs my full focus until March. What I can do is review the group's proposal in April, or suggest Sam, who knows this area well.",
+      "why": "A warm acknowledgment, a short honest no, and two real alternatives."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Say no in 25–50 seconds: acknowledge, no + reason, alternative.",
+      "prompts": [
+       "A colleague asks you to cover their on-call shift this weekend.",
+       "A client asks for a feature that's out of scope.",
+       "Your manager asks you to present at an event the same week as a deadline."
+      ],
+      "constraint": "Say the word “can't” or “no” clearly.",
+      "target_seconds": [
+       20,
+       50
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "w4",
+   "title": "Week 4 · Career-ready articulation",
+   "goal": "Pitch, disagree, own mistakes, teach — and your capstone talk.",
+   "lessons": [
+    {
+     "id": "am22",
+     "day": 22,
+     "title": "Pitching an idea in 60 seconds",
+     "minutes": 10,
+     "skill": "persuasion",
+     "summary": "Pitch any idea in one minute: problem, solution, impact, ask.",
+     "concept": [
+      "Ideas don't win because they're good. They win because someone explained them in a way a busy person could say yes to.",
+      "Start with the problem they already feel, then your solution, then the impact in numbers, then the specific ask.",
+      "If you can't say the impact in a number, estimate it — and say it's an estimate."
+     ],
+     "framework": {
+      "name": "Problem · Solution · Impact · Ask",
+      "steps": [
+       {
+        "label": "Problem",
+        "desc": "A pain the listener already feels."
+       },
+       {
+        "label": "Recommendation",
+        "desc": "Your idea in one sentence."
+       },
+       {
+        "label": "Impact",
+        "desc": "What changes, ideally in numbers."
+       },
+       {
+        "label": "Next step",
+        "desc": "The specific ask."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Problem first: “Every week, we lose…”",
+      "Solution in one sentence — no feature list.",
+      "Impact: time, money, risk, or customers.",
+      "Ask for something small: a pilot, a meeting, a yes."
+     ],
+     "example": {
+      "prompt": "Pitch an internal tool to your VP.",
+      "before": "So I've been building this tool, it has a dashboard and alerts and a Slack bot and some ML, it's pretty cool, I think people would like it.",
+      "after": "Every week, our on-call engineers spend about ten hours finding which service broke. I recommend a small tool that links each alert to the last deploy. In our pilot it cut diagnosis time by 60%. I'm asking for two weeks to roll it out to the payments team.",
+      "why": "A felt problem, a one-line solution, a measured impact, and a small, specific ask."
+     },
+     "exercise": {
+      "mode": "FDE / Customer",
+      "instructions": "Pitch the idea in under 60 seconds.",
+      "prompts": [
+       "Pitch a side project to a potential co-founder.",
+       "Pitch a process change to your team lead.",
+       "Pitch your product to a customer in an elevator."
+      ],
+      "constraint": "Under 60 seconds. Include a number.",
+      "target_seconds": [
+       35,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 parts"
+        },
+        {
+         "metric": "metrics.has_numbers",
+         "op": "==",
+         "value": true,
+         "label": "Includes a number"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 62,
+         "label": "Clarity ≥ 62"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am23",
+     "day": 23,
+     "title": "Disagreeing respectfully",
+     "minutes": 10,
+     "skill": "influence",
+     "summary": "Disagree with someone senior without sounding difficult — and commit once it's decided.",
+     "concept": [
+      "Staying quiet when you disagree isn't politeness, it's withholding information. Disagreeing well is about the how.",
+      "Acknowledge what's right in their view, state your position and your reason, then offer a way to test it or commit to the decision.",
+      "Disagree about ideas, never about intentions."
+     ],
+     "framework": {
+      "name": "Acknowledge · Point · Reason · Path",
+      "steps": [
+       {
+        "label": "Acknowledge",
+        "desc": "Credit what's right in their view."
+       },
+       {
+        "label": "Point",
+        "desc": "Your different view, clearly."
+       },
+       {
+        "label": "Reason",
+        "desc": "Why, with evidence."
+       },
+       {
+        "label": "Next step",
+        "desc": "A test, a decision rule, or your commitment."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“You're right that…, and I see it differently.”",
+      "“My concern is…, because…”",
+      "Offer a test: “Could we try…for a week?”",
+      "If overruled: “Understood — I'm on board.”"
+     ],
+     "example": {
+      "prompt": "Your VP wants to cut code reviews to ship faster.",
+      "before": "I mean, that's not really a good idea, everyone knows reviews are important…",
+      "after": "You're right that reviews are slowing us down — they average two days. I see the fix differently: my concern is that last quarter, reviews caught four bugs that would have hit customers. Could we try a same-day review rule for two weeks and compare speed? If it doesn't work, I'll back your plan.",
+      "why": "Credits the concern, disagrees with evidence, and offers a test plus commitment."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Disagree respectfully in 45–75 seconds.",
+      "prompts": [
+       "Your manager wants to promise a client a date you think is unrealistic.",
+       "A senior engineer proposes an architecture you think is over-complex.",
+       "Your team wants to skip the retro this sprint."
+      ],
+      "constraint": "Acknowledge first. Offer a test or commit.",
+      "target_seconds": [
+       40,
+       75
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.5,
+         "label": "Hit at least 2 of 4 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 2,
+         "label": "At most 2 hedges"
+        },
+        {
+         "metric": "scores.relevance",
+         "op": ">=",
+         "value": 55,
+         "label": "Relevance ≥ 55"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am24",
+     "day": 24,
+     "title": "Owning a mistake",
+     "minutes": 10,
+     "skill": "accountability",
+     "summary": "Take responsibility in a way that builds trust: own it, impact, fix, lesson.",
+     "concept": [
+      "How you handle a mistake matters more than the mistake. People trust those who own problems fast and clearly.",
+      "Own it in the first sentence, state the impact honestly, explain the fix, and share what changes so it won't happen again.",
+      "Avoid the passive voice (“mistakes were made”). Say “I”."
+     ],
+     "framework": {
+      "name": "Own · Impact · Fix · Lesson",
+      "steps": [
+       {
+        "label": "Own it",
+        "desc": "“I made a mistake:…” — first sentence."
+       },
+       {
+        "label": "Impact",
+        "desc": "Who was affected and how."
+       },
+       {
+        "label": "Fix",
+        "desc": "What you've already done."
+       },
+       {
+        "label": "Lesson",
+        "desc": "What changes going forward."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "First sentence: “That was my mistake.”",
+      "No “but” after the apology.",
+      "Show the fix is already in motion.",
+      "One concrete change to prevent a repeat."
+     ],
+     "example": {
+      "prompt": "You sent a report to a client with wrong numbers.",
+      "before": "So there was an issue with the report, the data pipeline had some problems, and it wasn't totally clear who was supposed to check it…",
+      "after": "I made a mistake: the report I sent on Monday had the wrong revenue figures. Your team used them in a planning meeting, and I'm sorry for that. I've already sent the corrected version and checked every other figure. Going forward, every report gets a second reviewer before it leaves our team.",
+      "why": "Ownership in the first sentence, honest impact, a fix already done, and a concrete prevention."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Own a mistake in 30–60 seconds.",
+      "prompts": [
+       "You missed a deadline you committed to.",
+       "You caused a production incident.",
+       "You forgot to invite a key stakeholder to a decision meeting."
+      ],
+      "constraint": "First sentence owns it. Say “I”.",
+      "target_seconds": [
+       30,
+       60
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 parts"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 1,
+         "label": "At most 1 hedge"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am25",
+     "day": 25,
+     "title": "Teaching someone a new skill",
+     "minutes": 10,
+     "skill": "explanation",
+     "summary": "Teach a skill so someone can actually do it: big idea, how it works, an example.",
+     "concept": [
+      "Teaching isn't explaining everything you know. It's choosing the smallest set of steps someone needs to succeed the first time.",
+      "Give the big idea, walk the steps in order, then anchor it with one example they can copy.",
+      "Check understanding by asking them to do it — not by asking “make sense?”."
+     ],
+     "framework": {
+      "name": "Idea · Steps · Example",
+      "steps": [
+       {
+        "label": "Big idea",
+        "desc": "What the skill is for."
+       },
+       {
+        "label": "How it works",
+        "desc": "The steps, in order — first, then, finally."
+       },
+       {
+        "label": "Concrete example",
+        "desc": "One worked example."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "“The goal is…”",
+      "Three to five steps, signposted.",
+      "Example: “For instance, if…”",
+      "End with: “Try it on…, and I'll watch.”"
+     ],
+     "example": {
+      "prompt": "Teach a new teammate how to write a good pull request description.",
+      "before": "Well, you just kind of explain what you did, and why, and testing, you'll figure it out, it's not hard.",
+      "after": "The goal is a reviewer understands your change in 60 seconds. First, write one line on why the change exists. Then, list what changed. Finally, say how you tested it. For example: “Fixes double charges on retry. Adds an idempotency key. Tested with a replayed payment.” Try it on your next PR and I'll review it.",
+      "why": "A purpose, signposted steps, and a copyable example."
+     },
+     "exercise": {
+      "mode": "Technical Explanation",
+      "instructions": "Teach the skill in 60–90 seconds.",
+      "prompts": [
+       "Teach someone how to run a good one-on-one meeting.",
+       "Teach someone how to debug a problem they've never seen.",
+       "Teach someone to cook your favorite simple dish."
+      ],
+      "constraint": "Signpost the steps. Give one example.",
+      "target_seconds": [
+       50,
+       90
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.clarity",
+         "op": ">=",
+         "value": 64,
+         "label": "Clarity ≥ 64"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am26",
+     "day": 26,
+     "title": "Thirty-second answers",
+     "minutes": 6,
+     "skill": "clarity",
+     "summary": "Answer anything in 30 seconds: bottom line, one fact, next step.",
+     "concept": [
+      "Senior people speak in short, complete answers. It signals clarity and respect for time.",
+      "Bottom line first, one supporting fact, then a next step — and stop. If they want more, they'll ask.",
+      "Today's challenge is ruthless editing out loud."
+     ],
+     "framework": {
+      "name": "BLUF in 30",
+      "steps": [
+       {
+        "label": "Bottom line",
+        "desc": "The answer, first."
+       },
+       {
+        "label": "Context",
+        "desc": "One supporting fact."
+       },
+       {
+        "label": "Next step",
+        "desc": "What happens now."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Aim for 60–80 words.",
+      "Cut background entirely.",
+      "One fact, not three.",
+      "Stop talking after the next step."
+     ],
+     "example": {
+      "prompt": "“Should we hire a contractor for the redesign?”",
+      "before": "Well, there are a lot of factors. Contractors have pros and cons, and our team is busy, but also budget is tight, and we tried this once before and…",
+      "after": "Yes — for six weeks, not longer. Our designers are fully booked until spring. I'll bring two candidates to Thursday's meeting.",
+      "why": "Answer, one fact, next step — in under 15 seconds."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Answer in under 30 seconds. Then stop.",
+      "prompts": [
+       "“Are we ready to launch?”",
+       "“What's the biggest risk on your project?”",
+       "“Why do you want this job?”"
+      ],
+      "constraint": "Under 30 seconds.",
+      "target_seconds": [
+       12,
+       32
+      ],
+      "pass": {
+       "overall": 55,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "metrics.filler_rate",
+         "op": "<=",
+         "value": 3,
+         "label": "Under 3 fillers per 100 words"
+        },
+        {
+         "metric": "metrics.hedge_count",
+         "op": "<=",
+         "value": 0,
+         "label": "At most 0 hedges"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am27",
+     "day": 27,
+     "title": "Recognition that lands",
+     "minutes": 6,
+     "skill": "leadership",
+     "summary": "Thank people specifically so it means something: what they did, the impact, the thanks.",
+     "concept": [
+      "“Great job, everyone!” is forgotten in seconds. Specific recognition is remembered for years — and it shows you were paying attention.",
+      "Name exactly what the person did, the concrete impact it had, and thank them directly.",
+      "Public recognition should be short. One person, one thing, one impact."
+     ],
+     "framework": {
+      "name": "Specifics · Impact · Thanks",
+      "steps": [
+       {
+        "label": "Specifics",
+        "desc": "Exactly what they did."
+       },
+       {
+        "label": "Impact",
+        "desc": "What it changed — for the team, customers or you."
+       },
+       {
+        "label": "Thanks",
+        "desc": "A direct thank-you by name."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Name the person and the action.",
+      "Impact with a number if you can.",
+      "“Thank you, Ana” — not “thanks, team”.",
+      "Keep it under 30 seconds."
+     ],
+     "example": {
+      "prompt": "Recognize a teammate in an all-hands.",
+      "before": "Shout out to the team, everyone worked super hard, it was great, thanks all!",
+      "after": "I want to recognize Ana. Over the weekend she rewrote our retry logic from scratch. Because of that, Monday's sale ran with zero failed payments — on our biggest day of the year. Thank you, Ana.",
+      "why": "A named person, a specific action, a measurable impact, a direct thank-you."
+     },
+     "exercise": {
+      "mode": "Leadership",
+      "instructions": "Give recognition in 20–40 seconds.",
+      "prompts": [
+       "Thank a mentor who helped you this year.",
+       "Recognize a teammate who fixed a critical bug.",
+       "Thank a cross-functional partner at the end of a project."
+      ],
+      "constraint": "Name one person and one specific action.",
+      "target_seconds": [
+       15,
+       40
+      ],
+      "pass": {
+       "overall": 60,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.67,
+         "label": "Hit at least 2 of 3 parts"
+        },
+        {
+         "metric": "scores.relevance",
+         "op": ">=",
+         "value": 60,
+         "label": "Relevance ≥ 60"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "am28",
+     "day": 28,
+     "title": "Capstone: your two-minute talk",
+     "minutes": 15,
+     "skill": "presence",
+     "summary": "Bring it all together: a two-minute talk with a hook, a story, a message and a strong close.",
+     "concept": [
+      "You've practised every piece over 27 days. Today you use them together.",
+      "Open with a hook, make one message clear, support it with a story or three points, and close by calling back to your opening.",
+      "Record this one with the mic. Compare it to your Day 1 introduction — you'll hear the difference."
+     ],
+     "framework": {
+      "name": "The complete talk",
+      "steps": [
+       {
+        "label": "Hook",
+        "desc": "An opening that earns attention."
+       },
+       {
+        "label": "Message",
+        "desc": "The one idea, stated clearly."
+       },
+       {
+        "label": "Story / points",
+        "desc": "A story or three points that prove it."
+       },
+       {
+        "label": "Call-back close",
+        "desc": "End by returning to your hook."
+       }
+      ]
+     },
+     "cheat_sheet": [
+      "Write your first and last sentence word for word.",
+      "One message. Everything else supports it.",
+      "Pause before your message and before your close.",
+      "End strong and still — no “so, yeah, that's it”."
+     ],
+     "example": {
+      "prompt": "A two-minute talk on what you learned from this program.",
+      "before": "So, yeah, I did this program, and it was good, I learned a lot of things about speaking, so, yeah, that's it, thanks.",
+      "after": "Four weeks ago, I introduced myself with a list of tasks and three “ums”. My message today: clear speaking isn't talent — it's structure plus practice. Here's what changed: I lead with the point, I pause instead of filling, and I end with an ask. … Four weeks ago I had a list. Today, I have a point.",
+      "why": "A hook, one message, supporting points, and a call-back close that mirrors the opening."
+     },
+     "exercise": {
+      "mode": "Toastmasters",
+      "instructions": "Give a 90–150 second talk with every element. Use the mic — this is your final.",
+      "prompts": [
+       "What have you learned about communicating over these four weeks?",
+       "What's one idea you think everyone at your company should hear?",
+       "Tell the story of a turning point in your career and what it taught you."
+      ],
+      "constraint": "Hook, message, support, call-back close.",
+      "target_seconds": [
+       90,
+       150
+      ],
+      "pass": {
+       "overall": 65,
+       "checks": [
+        {
+         "metric": "framework_coverage",
+         "op": ">=",
+         "value": 0.75,
+         "label": "Hit at least 3 of 4 parts"
+        },
+        {
+         "metric": "scores.structure",
+         "op": ">=",
+         "value": 65,
+         "label": "Structure ≥ 65"
+        },
+        {
+         "metric": "voice.volume.trails_off",
+         "op": "==",
+         "value": false,
+         "label": "Last sentence as loud as the first",
+         "audio": true
+        },
+        {
+         "metric": "voice.scores.pitch_variety",
+         "op": ">=",
+         "value": 65,
+         "label": "Pitch variety ≥ 65",
+         "audio": true
+        }
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

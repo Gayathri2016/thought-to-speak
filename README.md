@@ -46,6 +46,13 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 - **Speak Clearly journey:** 9 lessons — word stress, technical words, endings, TH, V/W, R/L, precise words,
   varied sentences, active voice.
 
+**Articulation Mastery in 28 Days — new in v7**
+- A daily program: one real-world speaking skill per day, ~10 minutes, four themed weeks
+  (lead with clarity → impress your colleagues → think on your feet → career-ready).
+- Each day: concept, framework, cheat sheet, before/after example, and a spoken exercise with pass criteria.
+- The next day unlocks the following morning in your timezone; streaks and weekly milestones keep you going.
+- Program content lives in `content/programs/articulation-28.json`.
+
 **Practice**
 - Five scenarios — Interview, Leadership, Technical explanation, Toastmasters, FDE / Customer — or your own prompt.
 - Scores for **structure, clarity, relevance, answer quality and delivery**, plus a framework check.
@@ -140,6 +147,7 @@ coach/insights.py    retry comparison, progress, recommendation
 coach/storage.py     SQLite + migrations; per-user view (UserStore)
 coach/auth.py        passwords (scrypt), sessions, rate limits, quotas
 content/journeys/    lessons (JSON) — one file per journey
+content/programs/    daily programs (JSON) — e.g. the 28-day Articulation Mastery program
 content/pronunciation.json, content/vocabulary.json, content/lexicon/  drills, word bank, CMU dictionary subset
 static/              UI — plain HTML/CSS/JS, no build step
 tests/               pytest

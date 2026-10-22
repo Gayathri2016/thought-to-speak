@@ -173,6 +173,20 @@ class Store:
                              (iso_utc, user_id)).fetchall()
         return [self._row(r) for r in rows]
 
+    def lesson_pass_times(self, since_iso: str, after_row: int, user_id=None) -> dict:
+        """lesson_id -> time of the first passing take saved after a marker (`since_iso` + `last_row()` taken
+        together). Timestamps are per-second, so within the marker's own second the row id decides."""
+        q = """SELECT lesson_id, MIN(created_at) t FROM attempts
+               WHERE lesson_passed=1 AND user_id IS ?
+                 AND (created_at > ? OR (created_at = ? AND rowid > ?)) GROUP BY lesson_id"""
+        with self._conn() as c:
+            return {r["lesson_id"]: r["t"] for r in c.execute(q, (user_id, since_iso, since_iso, after_row))}
+
+    def last_row(self) -> int:
+        """A position marker: every take saved after this call gets a larger rowid."""
+        with self._conn() as c:
+            return c.execute("SELECT COALESCE(MAX(rowid), 0) FROM attempts").fetchone()[0]
+
     def count_since(self, iso_utc: str, user_id) -> int:
         with self._conn() as c:
             return c.execute("SELECT COUNT(*) FROM attempts WHERE created_at >= ? AND user_id IS ?",
@@ -307,6 +321,12 @@ class UserStore:
 
     def since(self, iso_utc):
         return self._s.since(iso_utc, self.user_id)
+
+    def lesson_pass_times(self, since_iso, after_row):
+        return self._s.lesson_pass_times(since_iso, after_row, self.user_id)
+
+    def last_row(self):
+        return self._s.last_row()
 
     def count_since(self, iso_utc):
         return self._s.count_since(iso_utc, self.user_id)

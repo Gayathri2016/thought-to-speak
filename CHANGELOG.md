@@ -1,5 +1,18 @@
 # Changelog
 
+## v7 — Articulation Mastery in 28 Days
+- New daily program on the Learn tab: 28 one-skill-a-day lessons in four weeks — introductions, meeting
+  contributions, explaining complex ideas, persuasion, hooks, tough questions, feedback, listening, email,
+  networking, vocal presence, posture, leading discussions, negotiation, storytelling, impromptu, interviews,
+  conflict, trade-offs, exec updates, saying no, pitching, disagreeing, owning mistakes, teaching, 30-second
+  answers, recognition, and a capstone talk.
+- One day unlocks per calendar day (in your own timezone) after you pass the previous one; locked days can be read
+  but not practised. Streaks, milestones at 1, 2, 3 and 4 weeks, restart from Day 1.
+- While enrolled, Today's session uses the program's day as its lesson.
+- The browser sends its timezone (`X-Timezone`), so "today" follows the user's calendar, not the server's.
+- Better local scoring: framework cues now recognise the phrases the lessons teach, and "includes a number"
+  accepts number words ("three hours"). Every program day is tested: its model answer passes, its "before" fails.
+
 ## v6 — accounts
 - Sign up / sign in with email and password; sessions in an HttpOnly, SameSite=Lax cookie (30 days).
 - Every take, recording, lesson result, daily plan and export is private to its account — all queries are
