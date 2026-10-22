@@ -19,6 +19,13 @@
     <div class="top-right">
       <span id="providerBadge" class="badge" title="Analysis engine">…</span>
       <button id="themeBtn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">☾</button>
+      <div id="accountMenu" class="account hidden">
+        <button id="accountBtn" class="icon-btn account-btn" aria-haspopup="true" aria-expanded="false" title="Account"></button>
+        <div id="accountPop" class="account-pop hidden" role="menu">
+          <div class="small"><b id="accountName"></b><div id="accountEmail" class="muted"></div></div>
+          <button id="signOutBtn" class="ghost" role="menuitem">Sign out</button>
+        </div>
+      </div>
     </div>
   </div>
   <nav class="wrap tabs" role="tablist">
@@ -30,7 +37,31 @@
   </nav>
 </header>
 
-<main class="wrap">
+<!-- ============================== SIGN IN ============================== -->
+<div id="authScreen" class="auth-screen hidden">
+  <div class="auth-card card">
+    <div class="logo" aria-hidden="true">T→S</div>
+    <h2 id="authTitle">Create your account</h2>
+    <p class="muted small" id="authSub">Practice out loud, get coached on content and voice, and track your progress.</p>
+    <form id="authForm" novalidate>
+      <label id="nameField"><span>Name <span class="muted">(optional)</span></span>
+        <input id="authName" type="text" autocomplete="name" maxlength="80"></label>
+      <label>Email
+        <input id="authEmail" type="email" autocomplete="email" required maxlength="254"></label>
+      <label>Password
+        <input id="authPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="256">
+        <span id="pwHint" class="muted small">At least 8 characters.</span></label>
+      <p id="authError" class="auth-error hidden" role="alert"></p>
+      <button id="authSubmit" class="primary" type="submit">Create account</button>
+    </form>
+    <p class="small auth-switch"><span id="authSwitchText">Already have an account?</span>
+      <a href="#" id="authSwitch">Sign in</a></p>
+    <p class="muted small auth-privacy">Your recordings and transcripts are private to your account. You can delete
+      your account and everything in it at any time.</p>
+  </div>
+</div>
+
+<main class="wrap" id="appMain">
   <!-- ============================== PRACTICE ============================== -->
   <section id="tab-learn" class="tabpanel">
     <div id="learnHome">
@@ -323,9 +354,19 @@
           <a class="ghost btn-link" href="/api/export">⤓ Export JSON</a>
         </div>
       </div>
-      <p class="muted small">Stored locally in <code>data/thought_to_speak.db</code>. Nothing leaves your machine except
-        the transcript sent to your AI provider (if configured).</p>
+      <p class="muted small">Your history and recordings are private to your account. Transcripts are sent to the AI
+        provider only for coaching.</p>
       <div id="historyList"></div>
+    </div>
+    <div class="card danger-zone hidden" id="dangerZone">
+      <div class="card-h">Delete account</div>
+      <p class="small muted">Permanently deletes your account, every take, transcript and recording. This can't be undone.
+        Export your history first if you want a copy.</p>
+      <div class="row gap-s wrap-row">
+        <input id="deletePw" type="password" placeholder="Confirm your password" autocomplete="current-password">
+        <button id="deleteAccountBtn" class="danger">Delete my account</button>
+      </div>
+      <p id="deleteError" class="auth-error hidden" role="alert"></p>
     </div>
   </section>
 </main>

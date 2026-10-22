@@ -13,14 +13,39 @@ STRONG = ("When I was leading the streaming platform migration last year, my dir
           "approved the plan. I learned that data wins disagreements better than opinions.")
 
 
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
+def _fresh_app(tmp_path, monkeypatch, **env):
     monkeypatch.setenv("TTS_DB_PATH", str(tmp_path / "t.db"))
     monkeypatch.setenv("LLM_PROVIDER", "local")
     monkeypatch.setenv("TRANSCRIBE_PROVIDER", "none")
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    monkeypatch.delenv("DAILY_TAKE_LIMIT", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    from coach import auth
+    for lim in (auth.login_failures, auth.signups):
+        lim._hits.clear()
     import app as app_module
     importlib.reload(app_module)
-    return TestClient(app_module.app)
+    return app_module
+
+
+def _signup(c, email="ada@example.com", password="correct horse"):
+    r = c.post("/api/auth/signup", json={"email": email, "password": password, "name": "Ada"})
+    assert r.status_code == 200, r.text
+    return r.json()["user"]
+
+
+@pytest.fixture()
+def anon(tmp_path, monkeypatch):
+    """A client with no account yet."""
+    return TestClient(_fresh_app(tmp_path, monkeypatch).app)
+
+
+@pytest.fixture()
+def client(anon):
+    """A signed-in client."""
+    _signup(anon)
+    return anon
 
 
 def test_config_and_prompt(client):
@@ -299,3 +324,121 @@ def test_llm_language_notes_merge_and_respect_challenge(monkeypatch):
     c = analysis.analyze(STRONG, "Interview", PROMPT, challenge=True)
     assert c["language"]["word_upgrades"][0]["better"] == ""
     assert all(g["suggestion"] is None for g in c["language"]["sentences"]["grammar"])
+
+
+# ----------------------------------------------------------------------------- v6: accounts
+def test_data_endpoints_require_sign_in(anon):
+    assert anon.get("/api/auth/me").json() == {"mode": "accounts", "user": None}
+    for path in ("/api/history", "/api/progress", "/api/today", "/api/journey", "/api/export", "/api/recommendation"):
+        assert anon.get(path).status_code == 401, path
+    assert anon.post("/api/analyze", json={"transcript": STRONG}).status_code == 401
+    # public, account-free endpoints still work (landing page, pronunciation lookup)
+    assert anon.get("/api/config").status_code == 200
+    assert anon.get("/api/pronounce/lookup", params={"words": "data"}).status_code == 200
+
+
+def test_each_user_sees_only_their_own_practice(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    ada, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(ada, "ada@example.com")
+    _signup(bob, "bob@example.com")
+    r = ada.post("/api/analyze", json={"transcript": STRONG, "mode": "Interview", "prompt": PROMPT}).json()
+    aid, chain = r["attempt"]["id"], r["attempt"]["chain_id"]
+
+    assert len(ada.get("/api/history").json()) == 1
+    assert bob.get("/api/history").json() == []
+    assert bob.get("/api/progress").json()["total_attempts"] == 0
+    assert bob.get(f"/api/chain/{chain}").json() == []
+    assert bob.get(f"/api/audio/{aid}").status_code == 404
+    assert bob.delete(f"/api/attempts/{aid}").status_code == 404          # can't delete someone else's take
+    assert bob.get("/api/export").json() == []
+    # retrying onto another user's chain starts a fresh chain instead of joining theirs
+    rb = bob.post("/api/analyze", json={"transcript": STRONG, "chain_id": chain}).json()
+    assert rb["attempt"]["chain_id"] != chain and rb["attempt"]["attempt_no"] == 1
+    assert len(ada.get("/api/history").json()) == 1
+
+
+def test_signup_login_logout_and_errors(anon):
+    assert anon.post("/api/auth/signup", json={"email": "nope", "password": "longenough"}).status_code == 400
+    assert anon.post("/api/auth/signup", json={"email": "a@b.co", "password": "short"}).status_code == 400
+    user = _signup(anon, "Ada@Example.com ")
+    assert user["email"] == "ada@example.com"                               # normalized
+    assert anon.post("/api/auth/signup", json={"email": "ADA@example.com", "password": "another pw"}).status_code == 409
+
+    assert anon.post("/api/auth/logout").json()["ok"]
+    assert anon.get("/api/history").status_code == 401
+    assert anon.post("/api/auth/login", json={"email": "ada@example.com", "password": "wrong pass"}).status_code == 401
+    assert anon.post("/api/auth/login", json={"email": "ghost@example.com", "password": "whatever1"}).status_code == 401
+    ok = anon.post("/api/auth/login", json={"email": "ADA@example.com", "password": "correct horse"})
+    assert ok.status_code == 200 and ok.json()["user"]["id"] == user["id"]
+    assert anon.get("/api/auth/me").json()["user"]["email"] == "ada@example.com"
+
+
+def test_session_cookie_is_httponly_and_token_not_stored(anon, tmp_path):
+    r = anon.post("/api/auth/signup", json={"email": "ada@example.com", "password": "correct horse"})
+    cookie = r.headers["set-cookie"]
+    assert "tts_session=" in cookie and "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
+    token = anon.cookies.get("tts_session")
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "t.db")
+    hashes = [row[0] for row in db.execute("SELECT token_hash FROM sessions")]
+    pw = db.execute("SELECT password_hash FROM users").fetchone()[0]
+    assert token not in hashes and len(hashes) == 1                         # only the hash is stored
+    assert pw.startswith("scrypt$") and "correct horse" not in pw
+
+
+def test_login_is_rate_limited(anon):
+    _signup(anon)
+    anon.post("/api/auth/logout")
+    for _ in range(10):
+        anon.post("/api/auth/login", json={"email": "ada@example.com", "password": "wrong pass"})
+    r = anon.post("/api/auth/login", json={"email": "ada@example.com", "password": "correct horse"})
+    assert r.status_code == 429
+
+
+def test_delete_account_removes_everything(tmp_path, monkeypatch):
+    from coach import transcribe
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    wav = _speechlike_wav([("q", .3), ("s", 5), ("q", .3)])
+    r = c.post("/api/analyze-audio", files={"audio": ("take.wav", wav, "audio/wav")},
+               data={"payload": json.dumps({"transcript": STRONG, "mode": "Interview"})}).json()
+    audio_file = app_module.AUDIO_DIR / r["attempt"]["audio_path"]
+    assert audio_file.exists()
+    assert c.request("DELETE", "/api/auth/account", json={"password": "wrong"}).status_code == 403
+    assert c.request("DELETE", "/api/auth/account", json={"password": "correct horse"}).json()["ok"]
+    assert not audio_file.exists()
+    assert c.get("/api/history").status_code == 401
+    assert c.post("/api/auth/login", json={"email": "ada@example.com", "password": "correct horse"}).status_code == 401
+
+
+def test_daily_take_limit(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch, DAILY_TAKE_LIMIT="2").app)
+    _signup(c)
+    for _ in range(2):
+        assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 200
+    r = c.post("/api/analyze", json={"transcript": STRONG})
+    assert r.status_code == 429 and "limit" in r.json()["detail"]
+
+
+def test_first_account_inherits_practice_from_before_accounts(tmp_path, monkeypatch):
+    from coach.storage import Store
+    old = Store(tmp_path / "t.db")
+    old.add_attempt(mode="Interview", prompt="p", transcript=STRONG, challenge_mode=False, duration_seconds=30,
+                    analysis={"overall_score": 70})
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    first, second = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(first, "me@example.com")
+    _signup(second, "friend@example.com")
+    assert len(first.get("/api/history").json()) == 1
+    assert second.get("/api/history").json() == []
+
+
+def test_single_user_mode_needs_no_sign_in(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch, AUTH_MODE="single").app)
+    assert c.get("/api/auth/me").json()["mode"] == "single"
+    assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 200
+    assert len(c.get("/api/history").json()) == 1
+    assert c.post("/api/auth/signup", json={"email": "a@b.co", "password": "longenough"}).status_code == 400

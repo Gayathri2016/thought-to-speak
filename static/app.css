@@ -374,3 +374,25 @@ select.full { width: 100%; margin-top: 4px; }
 .pairs { display: flex; flex-direction: column; gap: 8px; }
 .pair { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pron-table th, .pron-table td { text-align: left !important; }
+
+/* accounts */
+input[type="text"], input[type="email"], input[type="password"] { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 32px 16px; background: var(--bg); }
+body.signed-out .top, body.signed-out #appMain { display: none; }
+.auth-card { width: 100%; max-width: 400px; padding: 28px; }
+.auth-card h2 { margin: 14px 0 4px; font-size: 22px; letter-spacing: -.01em; }
+.auth-card form { display: grid; gap: 14px; margin-top: 18px; }
+.auth-card label { display: grid; gap: 5px; font-weight: 600; font-size: 13.5px; }
+.auth-card .primary { justify-content: center; margin-top: 4px; }
+.auth-switch { margin: 16px 0 0; text-align: center; }
+.auth-switch a { color: var(--accent); font-weight: 650; }
+.auth-privacy { margin: 14px 0 0; text-align: center; }
+.auth-error { margin: 0; color: var(--bad); background: var(--bad-soft); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.account { position: relative; }
+.account-btn { font-size: 13.5px; font-weight: 750; border-radius: 99px; }
+.account-pop { position: absolute; right: 0; top: 42px; z-index: 20; min-width: 220px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.18); display: grid; gap: 10px; }
+.account-pop #accountEmail { word-break: break-all; }
+.danger-zone { margin-top: 16px; }
+.danger-zone input { max-width: 280px; }
+@media (max-width: 640px) { .badge { display: none; } }
