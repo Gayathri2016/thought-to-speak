@@ -37,6 +37,7 @@ function showTab(name) {
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".tabpanel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${name}`));
   if (name === "learn") loadLearn();
+  if (name === "pronounce") loadPronounce();
   if (name === "progress") loadProgress();
   if (name === "history") loadHistory();
   window.scrollTo({ top: 0 });
@@ -67,8 +68,14 @@ async function init() {
   showTab("learn");
 }
 
+const READ_ALOUD = "Read aloud";
 function setMode(mode, prompt) {
-  state.mode = mode;
+  const ra = mode === READ_ALOUD;
+  $("modeChips").classList.toggle("hidden", ra);
+  $("customPromptBtn").classList.toggle("hidden", ra);
+  $("promptLabel").textContent = ra ? "Read this aloud" : "Your prompt";
+  if (ra) return setReadAloud(prompt);
+  state.mode = mode; state.lastMode = mode;
   try { localStorage.setItem("tts-mode", mode); } catch (_) {}
   document.querySelectorAll("#modeChips .chip").forEach((c) => {
     const on = c.dataset.mode === mode; c.classList.toggle("active", on); c.setAttribute("aria-checked", on);
@@ -95,6 +102,22 @@ function practiceWith({ mode, prompt, ctx = null, challenge = false }) {
   renderCtxBanner();
 }
 function clearCtx() { state.ctx = null; $("recBanner").classList.add("hidden"); }
+
+function setReadAloud(text) {
+  state.mode = READ_ALOUD;
+  document.querySelectorAll("#modeChips .chip").forEach((c) => c.classList.remove("active"));
+  const target = state.ctx?.target || [4, 15];
+  state.target = target;
+  $("frameworkPills").innerHTML = `<button class="ghost sm" id="hearTarget">▶ Hear it</button>
+    <span class="small muted">Tap any word for its stress · then read at a natural pace</span>`;
+  $("targetTime").textContent = "";
+  const max = target[1] * 1.5;
+  $("timeTarget").style.left = `${(target[0] / max) * 100}%`;
+  $("timeTarget").style.width = `${((target[1] - target[0]) / max) * 100}%`;
+  setPrompt(text);
+  $("promptText").innerHTML = wordsHtml(text, state.ctx?.focus || []);
+  $("hearTarget").onclick = () => speak(state.prompt, 0.85);
+}
 function renderCtxBanner() {
   const c = state.ctx, b = $("recBanner");
   if (!c) { b.classList.add("hidden"); return; }
@@ -103,8 +126,12 @@ function renderCtxBanner() {
       ${c.steps?.length ? `<div class="small muted">${c.steps.map(esc).join(" · ")}</div>` : ""}</div>
     <div class="row gap-s">${back}<button class="ghost sm" id="closeBanner" aria-label="Leave this exercise">✕</button></div>`;
   b.classList.remove("hidden");
-  $("closeBanner").onclick = () => { clearCtx(); setMode(state.mode); };
-  $("ctxBack").onclick = () => { showTab("learn"); if (c.kind === "lesson") openLesson(c.lessonId); };
+  $("closeBanner").onclick = () => { clearCtx(); setMode(state.lastMode || "Interview"); };
+  $("ctxBack").onclick = () => {
+    if (c.from === "pronounce") return showTab("pronounce");
+    showTab("learn"); if (c.kind === "lesson") openLesson(c.lessonId);
+  };
+  if (c.from === "pronounce") $("ctxBack").textContent = "← Drills";
 }
 
 function setPrompt(p) {
@@ -134,8 +161,11 @@ function resetTake() {
 $("newPromptBtn").onclick = async () => {
   if (state.ctx?.prompts?.length > 1) {  // lessons cycle through their own prompts
     const ps = state.ctx.prompts, i = ps.indexOf(state.prompt);
-    setPrompt(ps[(i + 1) % ps.length]); return;
+    const next = ps[(i + 1) % ps.length];
+    if (state.mode === READ_ALOUD) setReadAloud(next); else setPrompt(next);
+    return;
   }
+  if (state.mode === READ_ALOUD) { clearCtx(); return setMode(state.lastMode || "Interview"); }
   clearCtx(); setMode(state.mode);
   const r = await api(`/api/prompt?mode=${encodeURIComponent(state.mode)}&exclude=${encodeURIComponent(state.prompt)}`);
   setPrompt(r.prompt);
@@ -257,7 +287,8 @@ async function analyze() {
   const transcript = $("transcript").value.trim();
   const hasAudio = audioSeconds() > 1.5;
   const canTranscribe = state.config.transcriber !== "none";
-  if (transcript.split(/\s+/).length < 3 && !(hasAudio && canTranscribe)) {
+  const minWords = state.mode === READ_ALOUD ? 1 : 3;
+  if (transcript.split(/\s+/).filter(Boolean).length < minWords && !(hasAudio && canTranscribe)) {
     $("status").textContent = hasAudio ? "No transcript captured — use Chrome/Edge for live transcription, set up Whisper, or type your answer."
       : "Speak or type a few sentences first.";
     return;
@@ -272,7 +303,9 @@ async function analyze() {
     chain_id: state.chainId,
     kind: state.ctx?.kind || "free",
     lesson_id: state.ctx?.kind === "lesson" ? state.ctx.lessonId : null,
+    target_text: state.mode === READ_ALOUD ? state.prompt : null,
   };
+  if (state.mode === READ_ALOUD && body.kind === "free") body.kind = "read_aloud";
   try {
     let r;
     if (hasAudio) {
@@ -289,6 +322,8 @@ async function analyze() {
     state.lastAttempt = r.attempt; state.chainId = r.attempt.chain_id;
     renderAnalysis(r.analysis);
     renderVoice(r.analysis.voice, r.attempt.id);
+    renderPronunciation(r.analysis);
+    renderLanguage(r.analysis);
     renderLessonResult(r.lesson_result);
     if (r.comparison) renderComparison(r.comparison, r.attempt.chain_id);
     else $("compareCard").classList.add("hidden");
@@ -314,6 +349,19 @@ function renderAnalysis(a) {
   fg.style.strokeDasharray = C; fg.style.strokeDashoffset = C * (1 - a.overall_score / 100);
   $("ring").setAttribute("aria-label", `Overall score ${a.overall_score} out of 100`);
 
+  const ra = a.kind === "read_aloud";
+  $("results").classList.toggle("read-aloud", ra);
+  if (ra) {
+    const p = a.pronunciation;
+    $("dims").innerHTML = [["Words clear", p.accuracy], ["Delivery", a.delivery_score]].map(([l, v]) => `
+      <div class="dim"><span>${l}</span><div class="dim-bar"><div style="width:${v}%"></div></div><b>${v}</b></div>`).join("") +
+      `<p class="small muted" style="margin:4px 0 0">${p.correct} of ${p.total} words came through cleanly${p.has_confidence ? "" : " · word confidence needs local Whisper"}</p>`;
+    const m = a.metrics;
+    $("metrics").innerHTML = [[p.correct + "/" + p.total, "clear words"], [p.substituted.length, "swapped"],
+      [p.missed.length, "missed"], [p.unclear.length, "unclear"], [m.wpm || "—", "words / min"]]
+      .map(([v, l]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+    return finishAnalysis(a);
+  }
   const labels = state.config.dimensions, s = a.scores;
   const weakest = DIMS.reduce((w, d) => (s[d] < s[w] ? d : w), DIMS[0]);
   $("dims").innerHTML = DIMS.map((d) => `
@@ -328,7 +376,11 @@ function renderAnalysis(a) {
     [m.filler_rate, "fillers / 100w"],
     [m.hedge_count, "hedges"],
   ].map(([v, l]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
-  const f = Object.entries(m.fillers || {});
+  finishAnalysis(a);
+}
+
+function finishAnalysis(a) {
+  const f = Object.entries(a.metrics.fillers || {});
   $("fillerChips").innerHTML = f.length
     ? f.map(([k, v]) => `<span class="chip">“${esc(k)}” ×${v}</span>`).join("")
     : `<span class="chip">No fillers detected 👏</span>`;
@@ -396,6 +448,7 @@ const hideTip = () => tip.classList.add("hidden");
 async function loadProgress() {
   const p = await api("/api/progress");
   renderRecommendation(p.recommendation);
+  renderLangProgress(p.language);
   if (!p.total_attempts) {
     $("kpis").innerHTML = ""; $("trendChart").innerHTML = `<p class="muted">No practice yet.</p>`;
     $("dimChart").innerHTML = ""; $("modeTable").innerHTML = ""; $("fillerBars").innerHTML = "";
@@ -719,8 +772,9 @@ function renderLessonResult(lr) {
 
 async function loadLearn() {
   const [today, journeys] = await Promise.all([api("/api/today"), api("/api/journey")]);
+  state.todayWords = today.words || [];
   renderToday(today);
-  renderJourney(journeys[0]);
+  renderJourneys(journeys);
   if (!state.lesson || $("lessonView").classList.contains("hidden")) showLearnHome();
 }
 function showLearnHome() { $("learnHome").classList.remove("hidden"); $("lessonView").classList.add("hidden"); }
@@ -739,30 +793,46 @@ function renderToday(t) {
   $("todayItems").querySelectorAll("[data-today]").forEach((b) => (b.onclick = () => {
     const it = t.items[+b.dataset.today];
     if (it.kind === "lesson") return openLesson(it.lesson_id);
+    if (it.kind === "read_aloud") {
+      return practiceWith({ mode: READ_ALOUD, prompt: it.prompt,
+        ctx: { kind: "read_aloud", title: it.title, constraint: "Read at a natural pace — every word clear.", steps: [], target: [4, 15] } });
+    }
     practiceWith({ mode: it.mode, prompt: it.prompt, challenge: it.challenge_mode,
       ctx: { kind: it.kind, title: it.title, constraint: it.constraint || (it.kind === "warmup" ? "No prep — start talking within 5 seconds." : ""),
         steps: it.steps || [], target: it.target_seconds || null } });
     if (it.kind === "warmup") $("status").textContent = "Hit “Start speaking” now — no prep.";
   }));
+  $("todayWords").innerHTML = t.words?.length ? `
+    <div class="tw-h"><span class="eyebrow">Today's words</span>
+      <span class="small muted">Use them naturally in any answer today — the coach checks.</span></div>
+    <div class="tw-list">${t.words.map((w) => `
+      <div class="tw ${w.used ? "used" : ""}"><div class="row between"><b class="w" data-w="${esc(w.word)}">${esc(w.word)}</b>
+        <span class="small">${w.used ? "✓ used" : esc(w.pos)}</span></div>
+        <div class="small">${esc(w.definition)}</div><div class="small muted"><i>${esc(w.example)}</i></div></div>`).join("")}</div>` : "";
 }
 
-function renderJourney(j) {
-  state.journey = j;
-  $("journeyTitle").textContent = j.title;
-  $("journeyDesc").textContent = j.description;
-  $("journeyFill").style.width = `${(j.done / Math.max(1, j.total)) * 100}%`;
-  $("journeyCount").textContent = `${j.done}/${j.total} passed`;
-  let n = 0;
-  $("journeyModules").innerHTML = j.modules.map((m) => `
-    <div class="module"><div class="module-h"><b>${esc(m.title)}</b><span class="small muted">${esc(m.goal)}</span></div>
-      ${m.lessons.map((l) => { n += 1; return `
-        <button class="lesson-row ${l.status}" data-lesson="${esc(l.id)}">
-          <span class="lr-icon">${l.status === "done" ? "✓" : n}</span>
-          <span><span class="lr-title">${esc(l.title)}</span><br><span class="lr-sub">${esc(l.framework)} · ${esc(l.mode)} · ${l.minutes} min</span></span>
-          <span class="lr-meta">${l.status === "current" ? "<b>Up next</b>" : l.best != null ? `best ${l.best}` : ""}${l.attempts ? `<br>${l.attempts} take${l.attempts > 1 ? "s" : ""}` : ""}</span>
-        </button>`; }).join("")}
-    </div>`).join("");
-  $("journeyModules").querySelectorAll("[data-lesson]").forEach((b) => (b.onclick = () => openLesson(b.dataset.lesson)));
+function renderJourneys(list) {
+  $("journeys").innerHTML = list.map((j, ji) => {
+    let n = 0;
+    return `<div class="card journey-card">
+      <div class="row between wrap-row">
+        <div><span class="eyebrow">Journey ${ji + 1}</span>
+          <div class="card-h" style="margin:2px 0 4px">${esc(j.title)}</div>
+          <p class="muted small" style="margin:0">${esc(j.description)}</p></div>
+        <div class="journey-meter"><div class="jm-bar"><div class="jm-fill" style="width:${(j.done / Math.max(1, j.total)) * 100}%"></div></div>
+          <span class="small">${j.done}/${j.total} passed</span></div>
+      </div>
+      ${j.modules.map((m) => `
+        <div class="module"><div class="module-h"><b>${esc(m.title)}</b><span class="small muted">${esc(m.goal)}</span></div>
+        ${m.lessons.map((l) => { n += 1; return `
+          <button class="lesson-row ${l.status}" data-lesson="${esc(l.id)}">
+            <span class="lr-icon">${l.status === "done" ? "✓" : n}</span>
+            <span><span class="lr-title">${esc(l.title)}</span><br><span class="lr-sub">${esc(l.framework)} · ${l.kind === "read_aloud" ? "🗣️ Read aloud" : esc(l.mode)} · ${l.minutes} min</span></span>
+            <span class="lr-meta">${l.status === "current" ? "<b>Up next</b>" : l.best != null ? `best ${l.best}` : ""}${l.attempts ? `<br>${l.attempts} take${l.attempts > 1 ? "s" : ""}` : ""}</span>
+          </button>`; }).join("")}</div>`).join("")}
+    </div>`;
+  }).join("");
+  $("journeys").querySelectorAll("[data-lesson]").forEach((b) => (b.onclick = () => openLesson(b.dataset.lesson)));
 }
 
 async function openLesson(id) {
@@ -784,10 +854,18 @@ async function openLesson(id) {
   $("exConstraint").textContent = e.constraint || "—";
   const pass = e.pass || {};
   $("exPass").innerHTML = [`Overall ≥ ${pass.overall ?? 60}`, ...(pass.checks || []).map((c) => c.label + (c.audio ? " 🎤" : ""))].map((x) => `<li>${esc(x)}</li>`).join("");
-  $("exPromptSelect").innerHTML = e.prompts.map((p) => `<option>${esc(p)}</option>`).join("");
+  const ra = l.read_aloud;
+  const prompts = ra ? ra.items.map((i) => i.text) : e.prompts;
+  $("exPromptSelect").previousElementSibling.textContent = ra ? "Sentence to read" : "Prompt";
+  $("exPromptSelect").innerHTML = prompts.map((p) => `<option>${esc(p)}</option>`).join("");
   const pr = l.progress || {};
   $("lessonProgressNote").textContent = pr.passed ? `✓ Passed · best ${pr.best}` : pr.attempts ? `${pr.attempts} take(s) · best ${pr.best}` : "";
-  $("practiceLessonBtn").onclick = () => practiceWith({
+  $("practiceLessonBtn").onclick = () => ra ? practiceWith({
+    mode: READ_ALOUD, prompt: $("exPromptSelect").value,
+    ctx: { kind: "lesson", lessonId: l.id, title: `Lesson ${l.index}: ${l.title}`, constraint: e.constraint,
+      steps: [e.instructions], target: e.target_seconds || [4, 12], prompts,
+      focus: ra.items.flatMap((i) => i.focus || []) },
+  }) : practiceWith({
     mode: e.mode, prompt: $("exPromptSelect").value, challenge: !!e.challenge_mode,
     ctx: { kind: "lesson", lessonId: l.id, title: `Lesson ${l.index}: ${l.title}`, constraint: e.constraint,
       steps: [e.instructions], framework: l.framework.steps.map((s) => s.label), frameworkName: l.framework.name,
@@ -796,5 +874,222 @@ async function openLesson(id) {
   window.scrollTo({ top: 0 });
 }
 $("backToJourney").onclick = () => { state.lesson = null; showLearnHome(); loadLearn(); };
+
+/* ------------------------------------------------------------------ pronunciation & language (v5) */
+const lookupCache = {};
+async function lookup(words) {
+  const need = words.filter((w) => !(w in lookupCache));
+  if (need.length) (await api(`/api/pronounce/lookup?words=${encodeURIComponent(need.join(","))}`))
+    .forEach((d, i) => (lookupCache[need[i]] = d));
+  return words.map((w) => lookupCache[w]);
+}
+const normWord = (w) => w.toLowerCase().replace(/[’]/g, "'").replace(/[^a-z0-9']/g, "").replace(/^'+|'+$/g, "");
+
+function wordsHtml(text, focus = [], statusByIndex = null) {
+  const f = new Set(focus.map(normWord));
+  let i = 0;
+  return esc(text).replace(/[A-Za-z][A-Za-z'’]*/g, (w) => {
+    const n = normWord(w);
+    const st = statusByIndex ? statusByIndex[i] : null; i++;
+    return `<span class="w ${f.has(n) ? "focus" : ""} ${st ? "st-" + st : ""}" data-w="${esc(n)}" tabindex="0">${w}</span>`;
+  });
+}
+
+let voiceCache = null;
+function speak(text, rate = 0.9) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US"; u.rate = rate;
+  voiceCache = voiceCache || speechSynthesis.getVoices().find((v) => /en[-_]US/i.test(v.lang));
+  if (voiceCache) u.voice = voiceCache;
+  speechSynthesis.speak(u);
+}
+
+async function showWordPop(word, anchor) {
+  const pop = $("wordPop");
+  const [d] = await lookup([word]);
+  pop.innerHTML = d && d.known ? `
+      <div class="row between"><b>${esc(d.word)}</b><button class="ghost sm" id="popClose" aria-label="Close">✕</button></div>
+      <div class="respell">${esc(d.respell)}</div>
+      <div class="small muted">${d.stress ? `Stress on the ${esc(d.stress)}` : `${d.syllables} syllable`}${d.sounds.length ? ` · sounds: ${d.sounds.map(esc).join(", ")}` : ""}</div>
+      <div class="row gap-s" style="margin-top:8px"><button class="primary sm" id="popHear">▶ Hear</button>
+        <button class="ghost sm" id="popSlow">🐢 Slowly</button></div>`
+    : `<div class="row between"><b>${esc(word)}</b><button class="ghost sm" id="popClose">✕</button></div>
+       <div class="small muted">Not in the dictionary.</div>
+       <div class="row gap-s" style="margin-top:8px"><button class="primary sm" id="popHear">▶ Hear</button></div>`;
+  pop.classList.remove("hidden");
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = `${Math.min(r.left, innerWidth - pop.offsetWidth - 12)}px`;
+  pop.style.top = `${r.bottom + 6 + scrollY}px`;
+  $("popClose").onclick = () => pop.classList.add("hidden");
+  $("popHear").onclick = () => speak(word, 0.85);
+  if ($("popSlow")) $("popSlow").onclick = () => speak(word, 0.55);
+}
+document.addEventListener("click", (e) => {
+  const w = e.target.closest(".w[data-w]");
+  if (w) { e.preventDefault(); showWordPop(w.dataset.w, w); return; }
+  if (!e.target.closest("#wordPop")) $("wordPop").classList.add("hidden");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches?.(".w[data-w]")) showWordPop(e.target.dataset.w, e.target);
+  if (e.key === "Escape") $("wordPop").classList.add("hidden");
+});
+
+function renderPronunciation(a) {
+  const el = $("pronCard");
+  if (a.kind !== "read_aloud") { el.classList.add("hidden"); return; }
+  const p = a.pronunciation;
+  const statuses = p.words.map((w) => w.status);
+  const problems = p.words.filter((w) => w.status !== "good");
+  el.classList.remove("hidden");
+  el.innerHTML = `
+    <h3 style="margin-top:0">🗣️ Word by word</h3>
+    <p class="ra-target">${wordsHtml(p.target, [], statuses)}</p>
+    <div class="wave-legend small muted"><span><i class="lg st-good"></i>clear</span><span><i class="lg st-unclear"></i>unclear</span>
+      <span><i class="lg st-substituted"></i>heard as another word</span><span><i class="lg st-missed"></i>missed</span></div>
+    ${problems.length ? `<table class="ptable pron-table"><tr><th>Word</th><th>What happened</th><th>Say it like</th><th></th></tr>
+      ${problems.map((w) => `<tr><td><b>${esc(w.word)}</b></td>
+        <td>${w.status === "substituted" ? `heard “${esc(w.heard)}”${(w.confusions || []).length ? ` <span class="tag">${w.confusions.map((c) => esc(c.label)).join(", ")}</span>` : ""}`
+          : w.status === "missed" ? "didn't come through" : `unclear (${Math.round((w.confidence || 0) * 100)}% confidence)`}</td>
+        <td>${w.guide?.known ? `<span class="respell-sm">${esc(w.guide.respell)}</span>` : "—"}</td>
+        <td><button class="ghost sm" data-say="${esc(w.word)}">▶</button></td></tr>`).join("")}</table>`
+      : `<p class="small">Every word came through clearly. 🎉</p>`}
+    ${p.extra_words.length ? `<p class="small muted">Extra words heard: ${p.extra_words.map(esc).join(", ")}</p>` : ""}
+    <p class="small muted">Measured by comparing what the recognizer heard with the sentence. ${p.has_confidence ? "" : "Turn on local Whisper to also flag unclear words."}</p>`;
+  el.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => speak(b.dataset.say, 0.8)));
+}
+
+function scoreBar(label, v) {
+  return `<div class="dim"><span>${esc(label)}</span><div class="dim-bar"><div style="width:${v ?? 0}%"></div></div><b>${v ?? "—"}</b></div>`;
+}
+
+function renderLanguage(a) {
+  const el = $("languageCard"), L = a.language;
+  if (!L || a.kind === "read_aloud") { el.classList.add("hidden"); return; }
+  const v = L.vocabulary, sn = L.sentences, ch = a.challenge_mode;
+  const chips = (xs, cls) => xs.map((x) => `<span class="chip ${cls}">${x}</span>`).join("");
+  const lens = sn.lengths || [];
+  const maxLen = Math.max(30, ...lens);
+  el.classList.remove("hidden");
+  el.innerHTML = `
+    <h3 style="margin-top:0">📝 Words & sentences</h3>
+    <div class="lang-grid">
+      <div>
+        ${scoreBar("Vocabulary", v.score)}
+        <p class="small muted">Variety ${Math.round(v.diversity * 100)}% · ${Math.round(v.advanced_share * 100)}% precise words · ${v.content_words} content words</p>
+        ${v.advanced_words.length ? `<div class="eyebrow">Precise words you used</div><div class="chips">${chips(v.advanced_words.map((w) => `<span class="w" data-w="${esc(w)}">${esc(w)}</span>`), "good")}</div>` : ""}
+        ${v.weak.length ? `<div class="eyebrow">Vague or weak wording</div><div class="chips">${chips(v.weak.map((w) =>
+          `“${esc(w.phrase)}” ×${w.count}${!ch && w.alternatives.length ? ` → ${w.alternatives.slice(0, 2).map(esc).join(" / ")}` : ""}`), "warn")}</div>` : ""}
+        ${v.overused.length ? `<div class="eyebrow">Repeated</div><div class="chips">${chips(v.overused.map((o) => `${esc(o.word)} ×${o.count}`), "")}</div>` : ""}
+        ${L.word_upgrades?.length ? `<div class="eyebrow">AI word upgrades</div><ul class="small">${L.word_upgrades.map((u) =>
+          `<li>“${esc(u.original)}”${u.better ? ` → <b>${esc(u.better)}</b>` : ""} <span class="muted">${esc(u.why)}</span></li>`).join("")}</ul>` : ""}
+        ${state.todayWords?.length ? `<div class="eyebrow">Today's words</div><div class="chips">${chips(state.todayWords.map((w) =>
+          (v.daily_used || []).includes(w.word) ? `✓ ${esc(w.word)}` : esc(w.word)), "")}</div>` : ""}
+      </div>
+      <div>
+        ${scoreBar("Sentence structure", sn.score)}
+        ${sn.method === "none" ? `<p class="small muted">${esc(sn.note)}</p>` : `
+          <p class="small muted">${sn.count} sentences · average ${sn.avg_length} words · longest ${sn.longest}${sn.method === "pauses" ? " · split by your pauses" : ""}</p>
+          <div class="sent-bars" role="img" aria-label="Sentence lengths">${lens.map((n, i) =>
+            `<div class="sb ${n > 30 ? "long" : ""}" style="height:${Math.max(6, (n / maxLen) * 100)}%" title="Sentence ${i + 1}: ${n} words"></div>`).join("")}</div>
+          <p class="small muted" style="margin-top:2px">Each bar is one sentence · aim for 10–22 words, with some variety</p>`}
+        ${(sn.run_ons || []).length ? `<div class="eyebrow">Run-on</div><p class="quote small">“${esc(sn.run_ons[0].slice(0, 160))}${sn.run_ons[0].length > 160 ? "…" : ""}”</p>` : ""}
+        ${sn.repeated_opener ? `<p class="small">🔁 Most sentences start with “<b>${esc(sn.repeated_opener)}</b>”.</p>` : ""}
+        ${(sn.passive || []).length ? `<p class="small">Passive: ${sn.passive.map((x) => `“${esc(x)}”`).join(", ")}</p>` : ""}
+        ${(sn.grammar || []).length ? `<div class="eyebrow">Grammar</div><ul class="small">${sn.grammar.map((g) =>
+          `<li>“${esc(g.original)}”${g.suggestion ? ` → <b>${esc(g.suggestion)}</b>` : ""} <span class="muted">${esc(g.issue)}</span></li>`).join("")}</ul>` : ""}
+        ${L.sentence_tip ? `<p class="small">💡 ${esc(L.sentence_tip)}</p>` : ""}
+      </div>
+    </div>
+    ${(L.unclear_words || []).length ? `<div class="eyebrow" style="margin-top:10px">Words that came out unclear</div>
+      <div class="chips">${L.unclear_words.map((u) => `<span class="chip warn"><span class="w" data-w="${esc(u.word)}">${esc(u.word)}</span> · ${Math.round(u.confidence * 100)}%</span>`).join("")}</div>` : ""}`;
+}
+
+/* ------------------------------------------------------------------ pronounce tab */
+async function loadPronounce() {
+  if (!state.sets) state.sets = await api("/api/pronounce/sets");
+  const prog = await api("/api/progress");
+  state.langProg = prog.language || {};
+  $("setChips").innerHTML = state.sets.map((st) => `<button class="chip ${st.id === (state.setId || state.sets[0].id) ? "active" : ""}" data-set="${esc(st.id)}">${esc(st.title)}</button>`).join("");
+  $("setChips").querySelectorAll("[data-set]").forEach((b) => (b.onclick = () => { state.setId = b.dataset.set; loadPronounce(); }));
+  renderSet(state.sets.find((x) => x.id === state.setId) || state.sets[0]);
+  renderSoundSummary(state.langProg);
+}
+
+function renderSet(st) {
+  $("setCard").innerHTML = `
+    <span class="eyebrow">${esc(st.kind === "sounds" ? "Sound pair" : st.kind === "stress" ? "Word stress" : "Clarity")}</span>
+    <div class="card-h" style="margin:2px 0 6px">${esc(st.title)}</div>
+    <p class="small">${esc(st.description)}</p>
+    ${st.tip ? `<p class="small tip">💡 ${esc(st.tip)}</p>` : ""}
+    <div class="ra-items">${st.items.map((it, i) => `
+      <div class="ra-item">
+        <p class="ra-text">${wordsHtml(it.text, it.focus || [])}</p>
+        ${it.tip ? `<p class="small muted">${esc(it.tip)}</p>` : ""}
+        <div class="row gap-s wrap-row"><button class="ghost sm" data-hear="${i}">▶ Hear</button>
+          <button class="ghost sm" data-slow="${i}">🐢 Slowly</button>
+          <button class="primary sm" data-practice="${i}">🎙️ Record this</button></div>
+      </div>`).join("")}</div>`;
+  $("setCard").querySelectorAll("[data-hear]").forEach((b) => (b.onclick = () => speak(st.items[+b.dataset.hear].text, 0.9)));
+  $("setCard").querySelectorAll("[data-slow]").forEach((b) => (b.onclick = () => speak(st.items[+b.dataset.slow].text, 0.6)));
+  $("setCard").querySelectorAll("[data-practice]").forEach((b) => (b.onclick = () => {
+    const it = st.items[+b.dataset.practice];
+    practiceWith({ mode: READ_ALOUD, prompt: it.text, ctx: { kind: "read_aloud", from: "pronounce", title: st.title,
+      constraint: st.tip || "Read at a natural pace.", steps: [], focus: it.focus || [], prompts: st.items.map((x) => x.text), target: [4, 15] } });
+  }));
+
+  const pairs = st.pairs_info || [];
+  const focus = [...new Set(st.items.flatMap((i) => i.focus_info || []).filter((d) => d.known).map((d) => JSON.stringify(d)))].map((x) => JSON.parse(x));
+  $("pairsCard").innerHTML = pairs.length ? `
+    <div class="card-h">Minimal pairs</div>
+    <p class="small muted">Only one sound changes. Hear both, then say both — the difference should be obvious.</p>
+    <div class="pairs">${pairs.map(([a, b]) => `
+      <div class="pair"><button class="ghost sm" data-say="${esc(a.word)}">▶ ${esc(a.word)}</button><span class="muted">vs</span>
+        <button class="ghost sm" data-say="${esc(b.word)}">▶ ${esc(b.word)}</button>
+        <span class="respell-sm">${esc(a.respell || "")} · ${esc(b.respell || "")}</span></div>`).join("")}</div>`
+    : `<div class="card-h">Stress guide</div>
+       <p class="small muted">CAPITALS = the stressed syllable. Make it longer, louder and higher.</p>
+       <table class="ptable">${focus.slice(0, 12).map((d) => `<tr><td><b class="w" data-w="${esc(d.word)}">${esc(d.word)}</b></td>
+         <td class="respell-sm">${esc(d.respell)}</td><td class="small muted">${esc(d.stress || "")}</td>
+         <td><button class="ghost sm" data-say="${esc(d.word)}">▶</button></td></tr>`).join("")}</table>`;
+  $("pairsCard").querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => speak(b.dataset.say, 0.8)));
+
+  const lp = state.langProg || {};
+  const trouble = lp.trouble_words || [];
+  $("troubleCard").innerHTML = `<div class="card-h">Your trouble words</div>` + (trouble.length
+    ? `<p class="small muted">Words that were missed, swapped or unclear in recent drills. Tap to practise.</p>
+       <div class="chips">${trouble.map(([w, n]) => `<span class="chip warn"><span class="w" data-w="${esc(w)}">${esc(w)}</span> ×${n}</span>`).join("")}</div>`
+    : `<p class="small muted">Record a few sentences — words that don't come through will collect here.</p>`);
+}
+
+function renderSoundSummary(lp) {
+  const sounds = Object.entries(lp.sounds || {});
+  $("soundSummary").innerHTML = sounds.length ? `<div class="eyebrow">Your sounds</div>` + sounds.sort((a, b) => a[1].accuracy - b[1].accuracy)
+    .map(([g, v]) => `<div class="fbar"><span>${esc(g)}</span><div class="t"><div style="width:${v.accuracy}%;${v.accuracy < 85 ? "background:var(--bad)" : ""}"></div></div><b>${v.accuracy}%</b></div>`).join("")
+    : `<span class="small muted">Sound accuracy appears after a few drills.</span>`;
+}
+
+function renderLangProgress(lp) {
+  if (!lp) { $("langProgress").innerHTML = ""; return; }
+  const k = [[lp.vocabulary_avg, "Vocabulary (last 10)"], [lp.sentences_avg, "Sentence structure (last 10)"],
+    [lp.pronunciation_avg, "Pronunciation accuracy (last 10 drills)"], [(lp.words_used || []).length, "Daily words you've used"]];
+  $("langProgress").innerHTML = `
+    <div class="card">
+      <div class="card-h">🗣️ Language skills</div>
+      <div class="kpis" style="margin-bottom:12px">${k.map(([v, l]) => `<div class="kpi"><div class="v">${v ?? "—"}</div><div class="l">${l}</div></div>`).join("")}</div>
+      <div class="grid2" style="margin:0">
+        <div><div class="eyebrow">Sounds</div><div id="lpSounds"></div></div>
+        <div>
+          ${lp.top_weak_words?.length ? `<div class="eyebrow">Your most common vague words</div><div class="chips">${lp.top_weak_words.map(([w, n]) => `<span class="chip warn">${esc(w)} ×${n}</span>`).join("")}</div>` : ""}
+          ${lp.trouble_words?.length ? `<div class="eyebrow" style="margin-top:10px">Pronunciation trouble words</div><div class="chips">${lp.trouble_words.map(([w, n]) => `<span class="chip"><span class="w" data-w="${esc(w)}">${esc(w)}</span> ×${n}</span>`).join("")}</div>` : ""}
+          ${lp.words_used?.length ? `<div class="eyebrow" style="margin-top:10px">Words added to your vocabulary</div><div class="chips">${lp.words_used.map(([w, n]) => `<span class="chip good">${esc(w)} ×${n}</span>`).join("")}</div>` : ""}
+        </div>
+      </div>
+    </div>`;
+  const sounds = Object.entries(lp.sounds || {});
+  $("lpSounds").innerHTML = sounds.length ? sounds.map(([g, v]) => `<div class="fbar"><span>${esc(g)}</span><div class="t"><div style="width:${v.accuracy}%"></div></div><b>${v.accuracy}%</b></div>`).join("")
+    : `<p class="small muted">Do a few drills in the Pronounce tab.</p>`;
+}
 
 init().catch((e) => { $("status").textContent = `Failed to load: ${e.message}`; });

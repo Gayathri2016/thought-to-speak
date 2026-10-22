@@ -1,0 +1,101 @@
+{
+  "sets": [
+    {
+      "id": "tech-clarity",
+      "title": "Technical clarity",
+      "kind": "clarity",
+      "description": "Long technical words are where speakers mumble. Hit the stressed syllable and finish every ending.",
+      "tip": "Slow down by 10% on the long words. Say every syllable you'd write.",
+      "items": [
+        {"text": "Our asynchronous pipeline guarantees idempotent writes with very low latency.", "focus": ["asynchronous", "idempotent", "latency"]},
+        {"text": "The architecture uses Kubernetes to orchestrate containerized microservices.", "focus": ["architecture", "kubernetes", "orchestrate", "containerized", "microservices"]},
+        {"text": "We prioritized throughput over consistency for the analytics workloads.", "focus": ["prioritized", "throughput", "consistency", "analytics"]},
+        {"text": "Authentication and authorization are two separate responsibilities.", "focus": ["authentication", "authorization", "responsibilities"]},
+        {"text": "Better observability improved our reliability and scalability this quarter.", "focus": ["observability", "reliability", "scalability"]}
+      ]
+    },
+    {
+      "id": "word-stress",
+      "title": "Word stress",
+      "kind": "stress",
+      "description": "English changes meaning and clarity with stress: PHOtograph, phoTOgraphy, photoGRAPHic. Wrong stress is the #1 reason clear speakers get misheard.",
+      "tip": "Make the stressed syllable longer, louder and higher. Relax the others.",
+      "items": [
+        {"text": "The photographer loves photography, and this photograph is her favorite.", "focus": ["photographer", "photography", "photograph"]},
+        {"text": "Before we analyze the data, let's read the analyst's analysis.", "focus": ["analyze", "analyst's", "analysis"]},
+        {"text": "We record every record, and we will present the present status.", "focus": ["record", "present"], "tip": "Nouns stress the first syllable (REcord, PREsent); verbs stress the second (reCORD, preSENT)."},
+        {"text": "The technology is technical, but the technician makes it simple.", "focus": ["technology", "technical", "technician"]},
+        {"text": "Economics shapes the economy, and every economic decision matters.", "focus": ["economics", "economy", "economic"]}
+      ]
+    },
+    {
+      "id": "th",
+      "title": "TH sounds",
+      "kind": "sounds",
+      "group": "TH",
+      "description": "TH is often replaced with s, t, d or f. Put the tip of your tongue lightly between your teeth and blow.",
+      "tip": "Voiceless TH (think) is just air; voiced TH (this) adds a buzz.",
+      "pairs": [["think", "sink"], ["thin", "tin"], ["three", "free"], ["thank", "tank"], ["they", "day"], ["then", "den"], ["those", "doze"], ["breathe", "breeze"]],
+      "items": [
+        {"text": "I think three things went through the thread on Thursday.", "focus": ["think", "three", "things", "through", "thread", "thursday"]},
+        {"text": "This is the theory they thought through together.", "focus": ["this", "the", "theory", "they", "thought", "through", "together"]},
+        {"text": "Thank you for thinking so thoroughly about the method.", "focus": ["thank", "thinking", "thoroughly", "method"]},
+        {"text": "Those were the months when the growth was healthy.", "focus": ["those", "months", "growth", "healthy"]}
+      ]
+    },
+    {
+      "id": "v-w",
+      "title": "V and W",
+      "kind": "sounds",
+      "group": "V/W",
+      "description": "V uses your top teeth on your bottom lip. W uses rounded lips and no teeth.",
+      "tip": "For V, feel the buzz on your lip. For W, start like 'oo'.",
+      "pairs": [["vest", "west"], ["vine", "wine"], ["veil", "whale"], ["very", "wary"], ["vow", "wow"], ["verse", "worse"]],
+      "items": [
+        {"text": "Very well, we will review the video by Wednesday.", "focus": ["very", "well", "we", "will", "review", "video", "wednesday"]},
+        {"text": "Our vision is to deliver value wherever we work.", "focus": ["vision", "deliver", "value", "wherever", "we", "work"]},
+        {"text": "The vendor's valuable advice was worth waiting for.", "focus": ["vendor's", "valuable", "advice", "was", "worth", "waiting"]}
+      ]
+    },
+    {
+      "id": "r-l",
+      "title": "R and L",
+      "kind": "sounds",
+      "group": "R/L",
+      "description": "L touches the tongue tip behind the top teeth. R never touches; the tongue pulls back.",
+      "tip": "Say 'la-ra-la-ra' slowly and feel where the tongue goes.",
+      "pairs": [["right", "light"], ["road", "load"], ["pray", "play"], ["rock", "lock"], ["fry", "fly"], ["grass", "glass"], ["correct", "collect"]],
+      "items": [
+        {"text": "Please collect the correct results early tomorrow.", "focus": ["please", "collect", "correct", "results", "early", "tomorrow"]},
+        {"text": "The rollout rarely looks right on the first release.", "focus": ["rollout", "rarely", "looks", "right", "release"]},
+        {"text": "Leadership is really about clear and reliable relationships.", "focus": ["leadership", "really", "clear", "reliable", "relationships"]}
+      ]
+    },
+    {
+      "id": "vowels",
+      "title": "Short vs long vowels",
+      "kind": "sounds",
+      "group": "IH/IY",
+      "description": "Short i (ship, live) is quick and relaxed. Long ee (sheep, leave) is longer, with a smile.",
+      "tip": "Exaggerate the length difference at first — it's the length listeners hear.",
+      "pairs": [["ship", "sheep"], ["live", "leave"], ["sit", "seat"], ["fill", "feel"], ["bit", "beat"], ["still", "steal"]],
+      "items": [
+        {"text": "Please sit in this seat and fill in the field.", "focus": ["sit", "seat", "fill", "field"]},
+        {"text": "I will leave if you still live here.", "focus": ["will", "leave", "still", "live"]},
+        {"text": "We need to keep the team's big wins visible.", "focus": ["need", "keep", "team's", "big", "wins", "visible"]}
+      ]
+    },
+    {
+      "id": "endings",
+      "title": "Word endings",
+      "kind": "clarity",
+      "description": "Dropped endings (-ed, -s, -ts, -ks) make speech sound rushed and change meaning: 'asked' vs 'ask'.",
+      "tip": "Land the last sound of each word before moving on.",
+      "items": [
+        {"text": "She asked six questions and listed the costs.", "focus": ["asked", "six", "questions", "listed", "costs"]},
+        {"text": "He walked, talked and worked through the last months.", "focus": ["walked", "talked", "worked", "months"]},
+        {"text": "The results helped us fix the products' biggest risks.", "focus": ["results", "helped", "products'", "biggest", "risks"]}
+      ]
+    }
+  ]
+}

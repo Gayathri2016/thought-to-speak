@@ -1,0 +1,279 @@
+{
+  "id": "speak-clearly",
+  "title": "Speak Clearly",
+  "description": "Pronunciation, vocabulary and sentence structure — the building blocks of being understood the first time.",
+  "modules": [
+    {
+      "id": "sc1",
+      "title": "Be understood",
+      "goal": "Clear words beat a perfect accent. Stress the right syllable and finish every word.",
+      "lessons": [
+        {
+          "id": "s1-stress",
+          "title": "Word stress",
+          "minutes": 7,
+          "skill": "pronunciation",
+          "summary": "Stress the right syllable: deVELopment, PHOtograph, phoTOgraphy.",
+          "concept": [
+            "In English, one syllable in each word is longer, louder and higher. Listeners recognise words by that stress pattern before they process the individual sounds.",
+            "Put the stress on the wrong syllable and a perfectly pronounced word can still be misheard — 'deVELopment' said as 'DEvelopment' makes people work to decode you.",
+            "Word families shift stress: PHOtograph → phoTOgraphy → photoGRAPHic. Nouns and verbs can differ too: a REcord vs to reCORD."
+          ],
+          "framework": {"name": "Long · Loud · High", "steps": [
+            {"label": "Find it", "desc": "Look up the stressed syllable (click any word in the drill to see it in CAPITALS)."},
+            {"label": "Stretch it", "desc": "Make the stressed syllable longer, louder and slightly higher."},
+            {"label": "Relax the rest", "desc": "Unstressed syllables get shorter and softer, often 'uh'."}
+          ]},
+          "cheat_sheet": [
+            "-tion / -sion: stress the syllable before (inforMAtion, deCIsion).",
+            "-ity / -ical / -graphy: stress the syllable before (abiLIty, TECHnical, phoTOgraphy).",
+            "Two-syllable nouns usually stress the 1st (PROject); verbs the 2nd (proJECT).",
+            "Unsure? Click the word in the drill and press ▶ to hear it."
+          ],
+          "example": {"prompt": "“We need to develop a photography plan.”",
+            "before": "We need to DEvelop a PHOtography plan.",
+            "after": "We need to deVELop a phoTOgraphy plan.",
+            "why": "Same sounds, different stress. The second version is understood instantly."},
+          "exercise": {
+            "kind": "read_aloud", "set": "word-stress", "mode": "Read aloud",
+            "instructions": "Read each sentence aloud. Exaggerate the stressed syllable of the highlighted words.",
+            "constraint": "Read at a natural pace — don't spell words out.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"}]}
+          }
+        },
+        {
+          "id": "s2-tech",
+          "title": "Say technical words clearly",
+          "minutes": 7,
+          "skill": "pronunciation",
+          "summary": "Long technical words are where speakers mumble. Every syllable counts.",
+          "concept": [
+            "Under pressure we speed up on exactly the words that matter most: the long technical ones.",
+            "'Asynchronous', 'idempotent', 'observability' each have four or more syllables. Swallow one and the listener loses the word — and often the sentence.",
+            "The fix is mechanical: slow down on the long word, hit its stressed syllable, and finish the ending."
+          ],
+          "framework": {"name": "Slow · Stress · Finish", "steps": [
+            {"label": "Slow", "desc": "Drop your pace by about 10% on long words only."},
+            {"label": "Stress", "desc": "Land the stressed syllable (ay-SIHNG-kruh-nuhs)."},
+            {"label": "Finish", "desc": "Say the last sound before moving on."}
+          ]},
+          "cheat_sheet": ["Count the syllables: if a word has 4+, slow down on it.", "Never drop the middle syllable: ob-ser-va-BIL-i-ty.", "Pause briefly before a key term to give it weight."],
+          "example": {"prompt": "“Our pipeline is asynchronous.”", "before": "Our pipeline's a-syncrus.", "after": "Our pipeline is ay-SIHNG-kruh-nuhs.", "why": "All four syllables, stress on the second."},
+          "exercise": {
+            "kind": "read_aloud", "set": "tech-clarity", "mode": "Read aloud",
+            "instructions": "Read each sentence. Slow down on the highlighted technical words.",
+            "constraint": "Every syllable of every highlighted word.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"}]}
+          }
+        },
+        {
+          "id": "s3-endings",
+          "title": "Finish your words",
+          "minutes": 6,
+          "skill": "pronunciation",
+          "summary": "Dropped endings (-ed, -s, -ts) change meaning: 'asked' vs 'ask'.",
+          "concept": [
+            "When we rush, word endings disappear: 'asked' becomes 'ask', 'costs' becomes 'cost'. That changes tense and number — and meaning.",
+            "Endings are also where clusters of consonants pile up (-sts, -kts, -nths). They need a deliberate, tiny bit of time.",
+            "Listeners won't notice when you say them. They will notice when you don't."
+          ],
+          "framework": {"name": "Land the last sound", "steps": [
+            {"label": "Notice", "desc": "Spot the -ed, -s and consonant clusters before you speak."},
+            {"label": "Land", "desc": "Say the final sound fully before the next word."},
+            {"label": "Link", "desc": "If the next word starts with a vowel, link into it: 'asked_about'."}
+          ]},
+          "cheat_sheet": ["-ed has three sounds: /t/ (asked), /d/ (played), /id/ (wanted).", "Plural -s after t/k/p is /s/; after vowels and voiced sounds it's /z/.", "Clusters like 'costs' and 'months': slow down, don't simplify."],
+          "example": {"prompt": "“She asked six questions.”", "before": "She ask six question.", "after": "She askT six questionZ.", "why": "Past tense and plural survive — the sentence means what you meant."},
+          "exercise": {
+            "kind": "read_aloud", "set": "endings", "mode": "Read aloud",
+            "instructions": "Read each sentence and land the final sound of every highlighted word.",
+            "constraint": "No dropped -ed or -s.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"}]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc2",
+      "title": "Tricky sounds",
+      "goal": "Fix the sound swaps that most often cause misunderstandings.",
+      "lessons": [
+        {
+          "id": "s4-th",
+          "title": "TH sounds",
+          "minutes": 7,
+          "skill": "pronunciation",
+          "summary": "think, not sink · this, not dis.",
+          "concept": [
+            "TH doesn't exist in many languages, so it's often replaced with s, t, d, f or z: 'think' becomes 'sink' or 'tink'.",
+            "There are two TH sounds. Voiceless TH (think, three) is only air. Voiced TH (this, they) adds a buzz from your throat.",
+            "Both start the same way: the tip of your tongue lightly between your teeth."
+          ],
+          "framework": {"name": "Tongue · Air · Buzz", "steps": [
+            {"label": "Tongue", "desc": "Tip of the tongue lightly between the teeth."},
+            {"label": "Air", "desc": "Blow air over the tongue: think, three, through."},
+            {"label": "Buzz", "desc": "Add your voice for this, they, together."}
+          ]},
+          "cheat_sheet": ["Use a mirror: you should see the tip of your tongue.", "Minimal pairs: think/sink, three/free, they/day, then/den.", "Practise slowly first; speed comes later."],
+          "example": {"prompt": "“I think three things went through.”", "before": "I sink tree tings went trough.", "after": "I THink THree THings went THrough.", "why": "Every TH audible — no word swaps."},
+          "exercise": {
+            "kind": "read_aloud", "set": "th", "mode": "Read aloud",
+            "instructions": "Read each sentence. Show your tongue on every TH.",
+            "constraint": "No TH turned into s, t, d or f.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"},
+                                               {"metric": "pronunciation.confusions", "op": "len<=", "value": 0, "label": "No TH swaps detected"}]}
+          }
+        },
+        {
+          "id": "s5-vw",
+          "title": "V and W",
+          "minutes": 6,
+          "skill": "pronunciation",
+          "summary": "very, not wery · west, not vest.",
+          "concept": [
+            "V and W are made in completely different places, but many speakers merge them.",
+            "V: top teeth gently on the bottom lip, with a buzz. W: round your lips like 'oo' — no teeth at all.",
+            "Getting these right makes 'very well' and 'we will review the video' crisp instead of blurred."
+          ],
+          "framework": {"name": "Teeth vs lips", "steps": [
+            {"label": "V = teeth", "desc": "Top teeth on bottom lip, buzz: very, video, value."},
+            {"label": "W = lips", "desc": "Round lips, start like 'oo': we, will, work."},
+            {"label": "Alternate", "desc": "very well · we value · wine vine — slowly, then faster."}
+          ]},
+          "cheat_sheet": ["Touch your lip with your finger: V buzzes against it, W doesn't touch.", "Pairs: vest/west, vine/wine, very/wary, verse/worse."],
+          "example": {"prompt": "“Very well, we will review the video.”", "before": "Wery vell, ve vill review the wideo.", "after": "Very well, we will review the video.", "why": "V where it's spelled V, W where it's spelled W."},
+          "exercise": {
+            "kind": "read_aloud", "set": "v-w", "mode": "Read aloud",
+            "instructions": "Read each sentence. Teeth on lip for V; rounded lips for W.",
+            "constraint": "No V/W swaps.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"},
+                                               {"metric": "pronunciation.confusions", "op": "len<=", "value": 0, "label": "No V/W swaps detected"}]}
+          }
+        },
+        {
+          "id": "s6-rl",
+          "title": "R and L",
+          "minutes": 6,
+          "skill": "pronunciation",
+          "summary": "right vs light · correct vs collect.",
+          "concept": [
+            "L touches: the tongue tip presses just behind the top teeth. R doesn't touch anything: the tongue pulls back and the lips round slightly.",
+            "Swapping them can change the word entirely — 'collect' vs 'correct', 'play' vs 'pray'.",
+            "Slow alternation drills (la-ra-la-ra) build the muscle memory faster than reading lists."
+          ],
+          "framework": {"name": "Touch vs float", "steps": [
+            {"label": "L = touch", "desc": "Tongue tip behind the top teeth: light, leader, reliable."},
+            {"label": "R = float", "desc": "Tongue pulled back, touching nothing: right, release."},
+            {"label": "Alternate", "desc": "la-ra-la-ra, light-right, collect-correct."}
+          ]},
+          "cheat_sheet": ["Pairs: right/light, road/load, pray/play, correct/collect, grass/glass.", "Words with both are the real test: 'reliable', 'rollout', 'relationships'."],
+          "example": {"prompt": "“Please collect the correct results.”", "before": "Prease correct the collect results.", "after": "Please collect the correct results.", "why": "The swap in the 'before' reverses the meaning."},
+          "exercise": {
+            "kind": "read_aloud", "set": "r-l", "mode": "Read aloud",
+            "instructions": "Read each sentence. Feel the tongue touch on L and float on R.",
+            "constraint": "No R/L swaps.",
+            "target_seconds": [4, 12],
+            "pass": {"overall": 70, "checks": [{"metric": "pronunciation.accuracy", "op": ">=", "value": 85, "label": "85% of words came through clearly"},
+                                               {"metric": "pronunciation.confusions", "op": "len<=", "value": 0, "label": "No R/L swaps detected"}]}
+          }
+        }
+      ]
+    },
+    {
+      "id": "sc3",
+      "title": "Words & sentences",
+      "goal": "Choose precise words and build sentences that are easy to follow.",
+      "lessons": [
+        {
+          "id": "s7-upgrade",
+          "title": "Upgrade your words",
+          "minutes": 8,
+          "skill": "vocabulary",
+          "summary": "Swap vague words (good, thing, a lot) for precise ones — and use today's words.",
+          "concept": [
+            "Articulate speakers don't use longer words; they use more precise ones. 'It was really good' tells the listener nothing. 'It cut costs by a third' tells them everything.",
+            "Vague words are placeholders: good, bad, thing, stuff, a lot, very. Each one is a chance to say exactly what you mean.",
+            "Building vocabulary works best in use, not in lists. That's why the app gives you three words a day to use in real answers."
+          ],
+          "framework": {"name": "Precise · Specific · Fresh", "steps": [
+            {"label": "Precise", "desc": "Replace vague words: good → effective, thing → risk/factor/issue."},
+            {"label": "Specific", "desc": "Add the number, name or example the vague word was hiding."},
+            {"label": "Fresh", "desc": "Use at least one of today's words naturally."}
+          ]},
+          "cheat_sheet": ["very important → critical · a lot of → significant · big → major", "deal with → handle / resolve · make sure → ensure", "Don't force fancy words: precise beats impressive."],
+          "example": {"prompt": "“How did the launch go?”", "before": "It went really good, we got a lot of users and stuff.", "after": "It exceeded our target — 12,000 sign-ups in the first week, mostly from the referral campaign.", "why": "Every vague word became a fact."},
+          "exercise": {
+            "mode": "Interview",
+            "instructions": "Answer with zero vague words, and use at least one of today's words.",
+            "prompts": ["What are you most proud of in the last year?", "Describe a project that failed or slipped. What was your part in it?", "How would your team describe your working style?"],
+            "constraint": "No good / bad / thing / stuff / a lot. One of today's words.",
+            "target_seconds": [45, 90],
+            "pass": {"overall": 55, "checks": [{"metric": "language.scores.vocabulary", "op": ">=", "value": 65, "label": "Vocabulary score ≥ 65"},
+                                               {"metric": "language.vocabulary.weak", "op": "len<=", "value": 1, "label": "At most one weak word or phrase"}]}
+          }
+        },
+        {
+          "id": "s8-vary",
+          "title": "Vary your sentences",
+          "minutes": 8,
+          "skill": "sentences",
+          "summary": "Break run-ons, mix short and long sentences, and change your openers.",
+          "concept": [
+            "Spoken run-ons ('and then… and so… and then…') are the most common structure problem. The listener can't tell where one idea ends.",
+            "Strong speakers vary rhythm: a long sentence that explains, then a short one that lands. Like this.",
+            "Starting every sentence with 'So' or 'I' makes speech sound flat. Vary your openers: 'Because…', 'The result…', 'Last year…'."
+          ],
+          "framework": {"name": "Stop · Mix · Open", "steps": [
+            {"label": "Stop", "desc": "End the sentence instead of saying 'and'. Pause."},
+            {"label": "Mix", "desc": "Follow a long sentence with a short one."},
+            {"label": "Open", "desc": "Vary the first word of each sentence."}
+          ]},
+          "cheat_sheet": ["If you hear yourself say 'and then', stop and start a new sentence.", "Aim for 10–20 words per sentence on average.", "Use 'because', 'which' and 'although' to connect ideas without chaining."],
+          "example": {"prompt": "“Walk me through the incident.”", "before": "So the brokers ran out of disk and then we got paged and so we restarted them and then it was fine.", "after": "Two brokers ran out of disk at 2 a.m. We were paged within a minute. Because the restart fixed it, we added disk alerts that afternoon.", "why": "Three clear sentences, varied openers, one 'because' instead of four 'and's."},
+          "exercise": {
+            "mode": "Leadership",
+            "instructions": "Answer in short, complete sentences. No 'and then' chains.",
+            "prompts": ["Give an update to leadership on a project that is two weeks behind.", "Explain to your team why you're changing the on-call process.", "Walk me through how your team handled its last incident."],
+            "constraint": "No run-ons. Start sentences with different words.",
+            "target_seconds": [45, 90],
+            "pass": {"overall": 55, "checks": [{"metric": "language.scores.sentences", "op": ">=", "value": 70, "label": "Sentence score ≥ 70", "requires": "sentences"},
+                                               {"metric": "language.sentences.run_ons", "op": "len<=", "value": 0, "label": "No run-on sentences", "requires": "sentences"}]}
+          }
+        },
+        {
+          "id": "s9-active",
+          "title": "Active, clean sentences",
+          "minutes": 7,
+          "skill": "sentences",
+          "summary": "Say who did what. Fewer passives, no grammar slips.",
+          "concept": [
+            "'Mistakes were made' hides who made them. 'I missed the deadline' owns it. Active voice sounds confident and is easier to follow.",
+            "Passive voice has its place (when the actor doesn't matter), but in interviews and updates it often blurs ownership.",
+            "Small grammar slips — 'he don't', 'there's many', 'less people' — distract listeners from your point."
+          ],
+          "framework": {"name": "Who · Did · What", "steps": [
+            {"label": "Who", "desc": "Start with the actor: I, we, the team, the system."},
+            {"label": "Did", "desc": "A strong verb: built, decided, cut, shipped."},
+            {"label": "What", "desc": "The object or result: the pipeline, the cost, the deadline."}
+          ]},
+          "cheat_sheet": ["'was decided' → 'we decided' · 'was built by me' → 'I built'.", "'there's many' → 'there are many' · 'less people' → 'fewer people'.", "'he don't' → 'he doesn't'."],
+          "example": {"prompt": "“What happened with the migration?”", "before": "The migration was delayed and some issues was found and a decision was made to roll back.", "after": "We delayed the migration after QA found two issues. I decided to roll back.", "why": "Actors are clear, verbs are active, and the grammar slip is gone."},
+          "exercise": {
+            "mode": "Interview",
+            "instructions": "Use active voice: start sentences with who acted.",
+            "prompts": ["Tell me about a time you disagreed with a senior stakeholder.", "Tell me about the hardest technical problem you solved in the last year.", "Describe a decision you made with incomplete information."],
+            "constraint": "At most one passive. No grammar slips.",
+            "target_seconds": [45, 90],
+            "pass": {"overall": 55, "checks": [{"metric": "language.sentences.passive", "op": "len<=", "value": 1, "label": "At most one passive construction"},
+                                               {"metric": "language.sentences.grammar", "op": "len<=", "value": 0, "label": "No grammar issues detected"}]}
+          }
+        }
+      ]
+    }
+  ]
+}

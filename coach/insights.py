@@ -17,6 +17,10 @@ def _dt(s: str) -> datetime:
     return d.astimezone()  # local time of the machine running the app
 
 
+def is_read_aloud(a: dict) -> bool:
+    return a.get("kind") == "read_aloud" or (a.get("analysis") or {}).get("kind") == "read_aloud"
+
+
 def _avg(xs):
     xs = [x for x in xs if isinstance(x, (int, float))]
     return round(sum(xs) / len(xs), 1) if xs else None
@@ -43,7 +47,12 @@ def compare(base: dict, cur: dict) -> dict:
     verdict = "improved" if od >= 3 else "regressed" if od <= -3 else "steady"
 
     narrative = _heuristic_narrative(improved, regressed, metric_deltas, gained, lost, verdict)
-    if llm.active_provider() != "local":
+    if is_read_aloud(cur):
+        bp, cp = base["analysis"].get("pronunciation") or {}, cur["analysis"].get("pronunciation") or {}
+        fixed = sorted({w for w in bp.get("missed", []) + bp.get("unclear", []) + [x["word"] for x in bp.get("substituted", [])]}
+                       - {w for w in cp.get("missed", []) + cp.get("unclear", []) + [x["word"] for x in cp.get("substituted", [])]})
+        narrative["what_improved"] = ([f"Now clear: {', '.join(fixed[:5])}."] if fixed else []) or narrative["what_improved"]
+    elif llm.active_provider() != "local":
         try:
             narrative = _llm_narrative(base, cur, deltas) or narrative
         except Exception as e:
@@ -144,6 +153,7 @@ EXERCISES = {
 
 
 def recommend(attempts: list[dict]) -> dict:
+    attempts = [a for a in attempts if not is_read_aloud(a)]
     scored = [a for a in attempts if all(a.get(d) is not None for d in DIMENSIONS)]
     recent = scored[-10:]
     if not recent:
@@ -210,6 +220,8 @@ def progress(attempts: list[dict]) -> dict:
         streak += 1
         d -= timedelta(days=1)
 
+    all_attempts = attempts
+    attempts = [a for a in attempts if not is_read_aloud(a)]  # drills have their own stats
     overall = [a for a in attempts if a.get("overall") is not None]
     last10, prev10 = overall[-10:], overall[-20:-10]
     scored = [a for a in attempts if all(a.get(x) is not None for x in DIMENSIONS)]
@@ -228,8 +240,8 @@ def progress(attempts: list[dict]) -> dict:
         fill.update((a["analysis"].get("metrics") or {}).get("fillers") or {})
 
     return {
-        "total_attempts": len(attempts),
-        "total_prompts": len({a["chain_id"] for a in attempts}),
+        "total_attempts": len(all_attempts),
+        "total_prompts": len({a["chain_id"] for a in all_attempts}),
         "practice_days": len(days),
         "streak_days": streak,
         "avg_overall_last10": _avg([a["overall"] for a in last10]),
@@ -246,4 +258,50 @@ def progress(attempts: list[dict]) -> dict:
         "top_fillers": fill.most_common(6),
         "avg_filler_rate": _avg([(a["analysis"].get("metrics") or {}).get("filler_rate") for a in attempts[-10:]]),
         "recommendation": recommend(attempts),
+        "language": language_progress(all_attempts),
+    }
+
+
+# --------------------------------------------------------------------------- pronunciation & language
+def sound_stats(attempts: list[dict], last: int = 30) -> dict:
+    """Accuracy per sound group across recent read-aloud drills."""
+    agg = {}
+    for a in [x for x in attempts if is_read_aloud(x)][-last:]:
+        for g, (ok, n) in ((a["analysis"].get("pronunciation") or {}).get("sounds") or {}).items():
+            t = agg.setdefault(g, [0, 0])
+            t[0] += ok
+            t[1] += n
+    return {g: {"correct": ok, "total": n, "accuracy": round(100 * ok / n)} for g, (ok, n) in agg.items() if n >= 3}
+
+
+def language_progress(attempts: list[dict]) -> dict:
+    speak = [a for a in attempts if not is_read_aloud(a) and (a["analysis"].get("language"))]
+    reads = [a for a in attempts if is_read_aloud(a)]
+    trend = [{"date": a["created_at"], "vocabulary": a["analysis"]["language"]["scores"]["vocabulary"],
+              "sentences": a["analysis"]["language"]["scores"]["sentences"]} for a in speak[-30:]]
+    pron_trend = [{"date": a["created_at"], "accuracy": (a["analysis"].get("pronunciation") or {}).get("accuracy")}
+                  for a in reads[-30:]]
+    weak = Counter()
+    for a in speak[-15:]:
+        for w in a["analysis"]["language"]["vocabulary"].get("weak", []):
+            weak[w["phrase"]] += w["count"]
+    trouble = Counter()
+    for a in reads[-20:]:
+        p = a["analysis"].get("pronunciation") or {}
+        for w in p.get("missed", []) + p.get("unclear", []) + [x["word"] for x in p.get("substituted", [])]:
+            trouble[w] += 1
+    used = Counter()
+    for a in speak:
+        for w in a["analysis"]["language"]["vocabulary"].get("daily_used", []):
+            used[w] += 1
+    return {
+        "vocabulary_avg": _avg([t["vocabulary"] for t in trend[-10:]]),
+        "sentences_avg": _avg([t["sentences"] for t in trend[-10:]]),
+        "pronunciation_avg": _avg([t["accuracy"] for t in pron_trend[-10:]]),
+        "trend": trend, "pronunciation_trend": pron_trend,
+        "sounds": sound_stats(attempts),
+        "top_weak_words": weak.most_common(6),
+        "trouble_words": trouble.most_common(8),
+        "words_used": used.most_common(),
+        "read_aloud_count": len(reads),
     }

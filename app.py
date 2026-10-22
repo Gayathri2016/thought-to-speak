@@ -1,4 +1,4 @@
-"""Thought → Speak v4 — a personal AI communication coach.
+"""Thought → Speak v5 — a personal AI communication coach.
 
 Run:  uvicorn app:app --reload   then open http://127.0.0.1:8000
 """
@@ -20,6 +20,7 @@ load_dotenv(BASE_DIR / ".env")
 
 from coach import analysis, insights, llm, transcribe  # noqa: E402  (after load_dotenv)
 from coach import audio as audio_mod  # noqa: E402
+from coach import language, pronunciation  # noqa: E402
 from coach.prompts import MODES, normalize_mode, public_modes, random_prompt  # noqa: E402
 from coach.storage import Store  # noqa: E402
 from coach.curriculum import Curriculum  # noqa: E402
@@ -29,9 +30,9 @@ AUDIO_DIR = Path(os.getenv("TTS_AUDIO_DIR", DB_PATH.parent / "audio"))
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 store = Store(DB_PATH, legacy_json=BASE_DIR / "sessions.json")
-curriculum = Curriculum(BASE_DIR / "content")
+curriculum = Curriculum(BASE_DIR / "content" / "journeys")
 
-app = FastAPI(title="Thought → Speak", version="4.0")
+app = FastAPI(title="Thought → Speak", version="5.0")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 MAX_TRANSCRIPT_CHARS = 8000
@@ -45,8 +46,9 @@ class AnalyzeRequest(BaseModel):
     duration_seconds: float | None = Field(None, ge=0, le=3600)
     chain_id: str | None = None   # set when this is a retry of an earlier attempt
     save: bool = True
-    kind: str = Field("free", pattern="^(free|lesson|warmup|review)$")
+    kind: str = Field("free", pattern="^(free|lesson|warmup|review|read_aloud)$")
     lesson_id: str | None = None
+    target_text: str | None = Field(None, max_length=600)   # read-aloud drills: the sentence to read
 
 
 @app.get("/")
@@ -105,7 +107,7 @@ async def analyze_audio(audio: UploadFile = File(...), payload: str = Form("{}")
         raise HTTPException(400, str(e))
     voice["transcript_source"] = source
     voice["browser_transcript"] = req.transcript.strip() if words else None
-    out = await run_in_threadpool(_analyze, req, text, voice, name)
+    out = await run_in_threadpool(_analyze, req, text, voice, name, words)
     if warn:
         out["analysis"]["warning"] = " ".join(filter(None, [out["analysis"].get("warning"), warn]))
     return out
@@ -122,8 +124,9 @@ def get_audio(attempt_id: str):
     return FileResponse(path, media_type="audio/wav")
 
 
-def _analyze(req: AnalyzeRequest, text: str, voice: dict | None = None, audio_name: str | None = None):
-    if len(text.split()) < 3:
+def _analyze(req: AnalyzeRequest, text: str, voice: dict | None = None, audio_name: str | None = None,
+             words: list[dict] | None = None):
+    if len(text.split()) < (1 if req.kind == "read_aloud" or req.target_text else 3):
         if audio_name:
             (AUDIO_DIR / audio_name).unlink(missing_ok=True)
         raise HTTPException(400, "Speak or paste a response of at least a few words first.")
@@ -134,8 +137,20 @@ def _analyze(req: AnalyzeRequest, text: str, voice: dict | None = None, audio_na
     kind = "lesson" if lesson else req.kind
     if lesson:
         mode = lesson["exercise"]["mode"]
-    spec = curriculum.spec(lesson) if lesson else None
-    result = analysis.analyze(text, mode, req.prompt.strip(), req.challenge_mode, req.duration_seconds, spec, voice)
+    read_aloud = curriculum.is_read_aloud(lesson) or req.kind == "read_aloud"
+    if read_aloud:
+        target = (req.target_text or "").strip() or (curriculum.read_aloud_texts(lesson)[0] if lesson else "")
+        if not target:
+            raise HTTPException(400, "A read-aloud drill needs the sentence to read (target_text).")
+        result = analysis.analyze_read_aloud(text, target, words, voice)
+        mode = "Read aloud"
+        prompt = target
+    else:
+        spec = curriculum.spec(lesson) if lesson else None
+        daily = [w["word"] for w in language.daily_words()]
+        result = analysis.analyze(text, mode, req.prompt.strip(), req.challenge_mode, req.duration_seconds, spec,
+                                  voice, words, daily)
+        prompt = req.prompt.strip()
     lesson_result = curriculum.evaluate(lesson, result) if lesson else None
     if lesson_result:
         result["lesson_result"] = lesson_result
@@ -143,7 +158,7 @@ def _analyze(req: AnalyzeRequest, text: str, voice: dict | None = None, audio_na
         return {"analysis": result, "lesson_result": lesson_result}
 
     chain_id = req.chain_id if req.chain_id and store.chain(req.chain_id) else None
-    rec = store.add_attempt(mode=mode, prompt=req.prompt.strip(), transcript=text,
+    rec = store.add_attempt(mode=mode, prompt=prompt, transcript=text,
                             challenge_mode=req.challenge_mode, duration_seconds=req.duration_seconds,
                             analysis=result, chain_id=chain_id, kind=kind,
                             lesson_id=lesson["id"] if lesson else None,
@@ -167,10 +182,42 @@ def lesson_detail(lesson_id: str):
     les = curriculum.get(lesson_id)
     if not les:
         raise HTTPException(404, "Unknown lesson")
-    idx = curriculum.order.index(lesson_id)
-    nxt = curriculum.order[idx + 1] if idx + 1 < len(curriculum.order) else None
-    return {**les, "progress": store.lesson_stats().get(lesson_id, {}), "next_lesson_id": nxt,
-            "index": idx + 1, "count": len(curriculum.order)}
+    order = [i for i in curriculum.order if curriculum.get(i)["journey_id"] == les["journey_id"]]
+    idx = order.index(lesson_id)
+    nxt = order[idx + 1] if idx + 1 < len(order) else None
+    out = {**les, "progress": store.lesson_stats().get(lesson_id, {}), "next_lesson_id": nxt,
+           "index": idx + 1, "count": len(order)}
+    if curriculum.is_read_aloud(les):
+        st = pronunciation.get_set(les["exercise"]["set"])
+        out["read_aloud"] = {"set": st["id"], "title": st["title"], "tip": st.get("tip"), "items": st["items"],
+                             "pairs": st.get("pairs", [])}
+    return out
+
+
+@app.get("/api/pronounce/sets")
+def pronounce_sets():
+    out = []
+    for st in pronunciation.drill_sets():
+        out.append({**st, "items": [{**i, "focus_info": [pronunciation.describe(w) for w in i.get("focus", [])]}
+                                    for i in st["items"]],
+                    "pairs_info": [[pronunciation.describe(a), pronunciation.describe(b)] for a, b in st.get("pairs", [])]})
+    return out
+
+
+@app.get("/api/pronounce/lookup")
+def pronounce_lookup(words: str = Query(..., max_length=500)):
+    return [pronunciation.describe(w) for w in words.replace(",", " ").split()[:40]]
+
+
+@app.get("/api/vocab/today")
+def vocab_today():
+    return language.daily_words()
+
+
+@app.get("/api/vocab/bank")
+def vocab_bank():
+    used = dict(insights.language_progress(store.all_chronological())["words_used"])
+    return [{**w, "times_used": used.get(w["word"], 0)} for w in language.word_bank()]
 
 
 @app.get("/api/today")
