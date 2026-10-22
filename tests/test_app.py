@@ -442,3 +442,8 @@ def test_single_user_mode_needs_no_sign_in(tmp_path, monkeypatch):
     assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 200
     assert len(c.get("/api/history").json()) == 1
     assert c.post("/api/auth/signup", json={"email": "a@b.co", "password": "longenough"}).status_code == 400
+
+
+def test_app_files_are_revalidated_not_cached(anon):
+    for path in ("/", "/static/app.js", "/static/app.css"):
+        assert anon.get(path).headers["cache-control"] == "no-cache", path
