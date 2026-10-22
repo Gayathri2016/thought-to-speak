@@ -1,5 +1,16 @@
 # Changelog
 
+## v6 — accounts
+- Sign up / sign in with email and password; sessions in an HttpOnly, SameSite=Lax cookie (30 days).
+- Every take, recording, lesson result, daily plan and export is private to its account — all queries are
+  filtered by user, and other users' takes return 404.
+- Passwords hashed with scrypt; only a SHA-256 hash of each session token is stored.
+- Rate limits: 10 failed sign-ins per email or IP per 15 min, 5 sign-ups per IP per hour, and a daily take
+  quota per user (`DAILY_TAKE_LIMIT`, default 60) to cap API spend.
+- Delete account (password-confirmed) removes the account, all takes and audio files.
+- Practice recorded before v6 is moved into the first account that signs up.
+- `AUTH_MODE=single` keeps the old no-sign-in behaviour for personal use.
+
 ## v5 — pronunciation, vocabulary and sentence structure
 - New **Pronounce** tab: 7 read-aloud drill sets with minimal pairs, stress guide and text-to-speech.
 - Read-aloud scoring: word-by-word alignment (clear / unclear / swapped / missed), sound-swap detection via the

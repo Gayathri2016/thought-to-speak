@@ -94,6 +94,12 @@ Open <http://127.0.0.1:8000> in Chrome or Edge (live transcript). The microphone
 | `OPENAI_API_KEY` | AI coaching feedback and Whisper API transcription |
 | `ANTHROPIC_API_KEY` | AI coaching feedback via Claude (used when no OpenAI key is set) |
 | `LLM_PROVIDER`, `TRANSCRIBE_PROVIDER` | Force `openai` / `anthropic` / `local` / `none` |
+| `AUTH_MODE` | `accounts` (default): sign-in required, data private per user · `single`: no sign-in, one local user |
+| `DAILY_TAKE_LIMIT` | Analyzed takes per user per day (default 60, `0` = unlimited) |
+| `COOKIE_SECURE` | `auto` (default) · `1` behind an HTTPS proxy |
+
+**Accounts.** On first launch you'll see a sign-up screen. The first account you create takes over any practice
+you recorded before accounts existed. Prefer no sign-in for personal use? Set `AUTH_MODE=single`.
 
 ## How it works
 
@@ -117,7 +123,8 @@ Design choices:
 - **Delivery = 40 % words + 60 % voice.**
 - **Lessons are data.** Each `content/*.json` file is a journey, validated at startup. Pass checks can use
   `overall`, `framework_coverage`, `scores.*`, `metrics.*` or `voice.*`.
-- **Private by default.** History and recordings stay in `data/` on your machine. Transcripts go to your AI
+- **Private by default.** Every take belongs to an account and is visible only to it. History and recordings
+  are stored in `data/`. Transcripts go to your AI
   provider only if you configure one. Chrome's live transcript uses Google's speech service.
 
 ```
@@ -130,7 +137,8 @@ coach/curriculum.py  journeys, lesson pass checks, daily plan
 coach/pronunciation.py  read-aloud alignment, sound swaps, stress & respelling
 coach/language.py    vocabulary, sentence structure, grammar checks, word bank
 coach/insights.py    retry comparison, progress, recommendation
-coach/storage.py     SQLite + migrations
+coach/storage.py     SQLite + migrations; per-user view (UserStore)
+coach/auth.py        passwords (scrypt), sessions, rate limits, quotas
 content/journeys/    lessons (JSON) — one file per journey
 content/pronunciation.json, content/vocabulary.json, content/lexicon/  drills, word bank, CMU dictionary subset
 static/              UI — plain HTML/CSS/JS, no build step

@@ -13,8 +13,9 @@ const state = {
 };
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, credentials: "same-origin", ...opts });
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && !path.startsWith("/api/auth/")) showAuth("signin", "Your session ended — please sign in again.");
   if (!r.ok) throw new Error(data.detail || `Request failed (${r.status})`);
   return data;
 }
@@ -314,6 +315,7 @@ async function analyze() {
       fd.append("payload", JSON.stringify(body));
       const resp = await fetch("/api/analyze-audio", { method: "POST", body: fd });
       r = await resp.json().catch(() => ({}));
+      if (resp.status === 401) showAuth("signin", "Your session ended — please sign in again.");
       if (!resp.ok) throw new Error(r.detail || `Request failed (${resp.status})`);
       $("transcript").value = r.attempt.transcript;   // show exactly what was analyzed (Whisper text if used)
     } else {
@@ -1092,4 +1094,73 @@ function renderLangProgress(lp) {
     : `<p class="small muted">Do a few drills in the Pronounce tab.</p>`;
 }
 
-init().catch((e) => { $("status").textContent = `Failed to load: ${e.message}`; });
+/* ------------------------------------------------------------------ accounts */
+let authView = "signup";
+function showAuth(view = "signup", message = "") {
+  authView = view;
+  const up = view === "signup";
+  document.body.classList.add("signed-out");
+  $("authScreen").classList.remove("hidden");
+  $("authTitle").textContent = up ? "Create your account" : "Welcome back";
+  $("authSub").textContent = up ? "Practice out loud, get coached on content and voice, and track your progress."
+    : "Sign in to pick up where you left off.";
+  $("nameField").classList.toggle("hidden", !up);
+  $("pwHint").classList.toggle("hidden", !up);
+  $("authPassword").autocomplete = up ? "new-password" : "current-password";
+  $("authSubmit").textContent = up ? "Create account" : "Sign in";
+  $("authSwitchText").textContent = up ? "Already have an account?" : "New here?";
+  $("authSwitch").textContent = up ? "Sign in" : "Create an account";
+  $("authError").textContent = message;
+  $("authError").classList.toggle("hidden", !message);
+  setTimeout(() => $(up ? "authName" : "authEmail").focus(), 0);
+}
+$("authSwitch").onclick = (e) => { e.preventDefault(); showAuth(authView === "signup" ? "signin" : "signup"); };
+$("authForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = $("authSubmit"); btn.disabled = true;
+  const body = { email: $("authEmail").value, password: $("authPassword").value };
+  if (authView === "signup") body.name = $("authName").value;
+  try {
+    const r = await api(`/api/auth/${authView === "signup" ? "signup" : "login"}`, { method: "POST", body: JSON.stringify(body) });
+    $("authPassword").value = "";
+    location.reload();          // start the app fresh as this user
+    return r;
+  } catch (err) {
+    $("authError").textContent = err.message; $("authError").classList.remove("hidden");
+  } finally { btn.disabled = false; }
+};
+
+function showAccount(me) {
+  if (me.mode !== "accounts" || !me.user) return;
+  const u = me.user, label = (u.name || u.email).trim();
+  $("accountMenu").classList.remove("hidden");
+  $("dangerZone").classList.remove("hidden");
+  $("accountBtn").textContent = label.slice(0, 1).toUpperCase();
+  $("accountBtn").setAttribute("aria-label", `Account: ${u.email}`);
+  $("accountName").textContent = u.name || "Signed in";
+  $("accountEmail").textContent = u.email;
+}
+$("accountBtn").onclick = (e) => {
+  e.stopPropagation();
+  const open = $("accountPop").classList.toggle("hidden") === false;
+  $("accountBtn").setAttribute("aria-expanded", open);
+};
+document.addEventListener("click", (e) => { if (!$("accountMenu").contains(e.target)) $("accountPop").classList.add("hidden"); });
+$("signOutBtn").onclick = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); location.reload(); };
+$("deleteAccountBtn").onclick = async () => {
+  const err = $("deleteError");
+  if (!$("deletePw").value) { err.textContent = "Enter your password to confirm."; err.classList.remove("hidden"); return; }
+  if (!confirm("Delete your account and all your practice permanently?")) return;
+  try {
+    await api("/api/auth/account", { method: "DELETE", body: JSON.stringify({ password: $("deletePw").value }) });
+    location.reload();
+  } catch (e) { err.textContent = e.message; err.classList.remove("hidden"); }
+};
+
+async function boot() {
+  const me = await api("/api/auth/me");
+  if (me.mode === "accounts" && !me.user) return showAuth("signup");
+  showAccount(me);
+  await init();
+}
+boot().catch((e) => { $("status").textContent = `Failed to load: ${e.message}`; });
