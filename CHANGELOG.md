@@ -1,11 +1,16 @@
 # Changelog
 
-## v7 — Articulation Mastery in 28 Days
+## v7.1 — The 28-Day Speaking Sprint
+- The daily program has its own identity: renamed to *The 28-Day Speaking Sprint*, with new day titles, a new
+  order and week themes (Foundations → Voice & presence → Conversations → Influence), new milestones, and colours
+  that follow the app's theme in light and dark mode.
+
+## v7 — a 28-day daily program
 - New daily program on the Learn tab: 28 one-skill-a-day lessons in four weeks — introductions, meeting
   contributions, explaining complex ideas, persuasion, hooks, tough questions, feedback, listening, email,
   networking, vocal presence, posture, leading discussions, negotiation, storytelling, impromptu, interviews,
   conflict, trade-offs, exec updates, saying no, pitching, disagreeing, owning mistakes, teaching, 30-second
-  answers, recognition, and a capstone talk.
+  answers, recognition, and a final talk.
 - One day unlocks per calendar day (in your own timezone) after you pass the previous one; locked days can be read
   but not practised. Streaks, milestones at 1, 2, 3 and 4 weeks, restart from Day 1.
 - While enrolled, Today's session uses the program's day as its lesson.

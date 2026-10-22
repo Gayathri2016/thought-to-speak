@@ -93,7 +93,7 @@ FRAMEWORK_CUES = {
     "Impact": ["cut", "reduced", "saved", "doubled", "so that", "which meant", "result", "unblocked", "faster",
                "increased", "improved"],
     "Next step": ["next step", "follow up", "schedule", "by next", "i'll send", "let's set up", "action item", "could you", "by monday", "by tuesday", "by wednesday", "by thursday", "by friday", "by end of", "i'll bring", "i'll set up", "could we try", "let's try", "i'll back", "i'm on board"],
-    # v7: 28-day Articulation Mastery program
+    # v7: the 28-Day Speaking Sprint
     "Behavior": ["you said", "you did", "you merged", "you joined", "you interrupted", "you wrote", "you sent",
                  "you skipped", "you missed", "you shared", "you took", "you presented"],
     "Request": ["next time", "could you", "would you", "i'd like you", "i'd ask", "going forward", "can you",

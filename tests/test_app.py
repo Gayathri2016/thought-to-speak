@@ -449,7 +449,7 @@ def test_app_files_are_revalidated_not_cached(anon):
         assert anon.get(path).headers["cache-control"] == "no-cache", path
 
 
-# ----------------------------------------------------------------------------- v7: 28-day program
+# ----------------------------------------------------------------------------- v7: 28-day Speaking Sprint
 INTRO = ("I'm a backend engineer who builds payment systems for a retail company. I've been there three years; "
          "before that I worked on rewards, and I built the redemption service that cut failed redemptions by "
          "40 percent. Right now I'm looking for a role where I can lead platform work, and I'm excited about "
@@ -465,8 +465,8 @@ def test_program_content_is_complete_and_scorable():
     from coach.curriculum import Curriculum
     from coach.prompts import MODES
     cur = Curriculum()
-    assert list(cur.programs) == ["articulation-28"]
-    ids = cur.program_days["articulation-28"]
+    assert list(cur.programs) == ["speaking-sprint-28"]
+    ids = cur.program_days["speaking-sprint-28"]
     assert len(ids) == 28 and len(cur.order) == 19          # program days don't change the self-paced journeys
     for n, lid in enumerate(ids, start=1):
         les = cur.get(lid)
@@ -475,30 +475,31 @@ def test_program_content_is_complete_and_scorable():
         for step in les["framework"]["steps"]:                # local scoring can detect every framework part
             assert FRAMEWORK_CUES.get(step["label"]), (lid, step["label"])
     titles = [cur.get(i)["title"] for i in ids]
-    assert titles[0] == "Confident introductions" and titles[-1].startswith("Capstone")
-    assert [m["day"] for m in cur.programs["articulation-28"]["milestones"]] == [7, 14, 21, 28]
+    assert titles[0] == "Your 30-second story" and titles[-1].startswith("Final")
+    assert len(set(titles)) == 28
+    assert [m["day"] for m in cur.programs["speaking-sprint-28"]["milestones"]] == [7, 14, 21, 28]
 
 
 def test_program_unlocks_one_day_per_calendar_day(client, monkeypatch):
     import app as app_module
     from datetime import datetime, timedelta
     st = client.get("/api/programs").json()[0]
-    assert st["title"] == "Articulation Mastery in 28 Days" and not st["enrolled"]
+    assert st["title"] == "The 28-Day Speaking Sprint" and not st["enrolled"]
     days = _days(st)
     assert days[0]["status"] == "available" and days[1]["status"] == "locked"
 
     # Day 2 can't be practised before Day 1 is passed
-    r = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am02"})
+    r = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss02"})
     assert r.status_code == 403 and "Day 1" in r.json()["detail"]
 
-    ok = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am01", "duration_seconds": 35,
+    ok = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss01", "duration_seconds": 35,
                                            "prompt": "Introduce yourself at the start of a job interview."}).json()
     assert ok["lesson_result"]["passed"], ok["lesson_result"]
     assert ok["program"]["done"] == 1 and ok["program"]["today_status"] == "done"   # practising Day 1 enrolled you
 
     st = client.get("/api/programs").json()[0]
     assert st["enrolled"] and st["streak"] == 1 and _days(st)[1]["status"] == "tomorrow"
-    r = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am02"})
+    r = client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss02"})
     assert r.status_code == 403 and "tomorrow" in r.json()["detail"]
 
     lesson_item = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "lesson")
@@ -511,17 +512,17 @@ def test_program_unlocks_one_day_per_calendar_day(client, monkeypatch):
     st = client.get("/api/programs").json()[0]
     assert _days(st)[1]["status"] == "available" and st["current_day"] == 2 and st["streak"] == 1
     lesson_item = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "lesson")
-    assert lesson_item["lesson_id"] == "am02" and not lesson_item["done"]
-    assert client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am02"}).status_code == 200
-    detail = client.get("/api/lessons/am02").json()
+    assert lesson_item["lesson_id"] == "ss02" and not lesson_item["done"]
+    assert client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss02"}).status_code == 200
+    detail = client.get("/api/lessons/ss02").json()
     assert detail["program"]["day"] == 2 and detail["index"] == 2 and detail["count"] == 28
 
 
 def test_program_restart_and_milestones(client):
-    client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am01", "duration_seconds": 35})
+    client.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss01", "duration_seconds": 35})
     st = client.get("/api/programs").json()[0]
     assert st["done"] == 1 and not any(m["reached"] for m in st["milestones"])
-    st = client.post("/api/programs/articulation-28/start").json()       # restart from Day 1
+    st = client.post("/api/programs/speaking-sprint-28/start").json()       # restart from Day 1
     assert st["enrolled"] and st["done"] == 0 and st["current_day"] == 1
     assert client.post("/api/programs/nope/start").status_code == 404
 
@@ -531,7 +532,7 @@ def test_program_is_per_user(tmp_path, monkeypatch):
     ada, bob = TestClient(app_module.app), TestClient(app_module.app)
     _signup(ada, "ada@example.com")
     _signup(bob, "bob@example.com")
-    ada.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "am01", "duration_seconds": 35})
+    ada.post("/api/analyze", json={"transcript": INTRO, "lesson_id": "ss01", "duration_seconds": 35})
     assert ada.get("/api/programs").json()[0]["done"] == 1
     bob_state = bob.get("/api/programs").json()[0]
     assert bob_state["done"] == 0 and not bob_state["enrolled"]
@@ -554,7 +555,7 @@ def test_every_program_day_passes_its_model_answer_and_fails_the_before(monkeypa
     monkeypatch.setenv("LLM_PROVIDER", "local")
     cur = Curriculum()
     clean = lambda t: re.sub(r"\([^)]*\)|\[pause\]|…", "", t)  # noqa: E731  (strip stage directions)
-    for lid in cur.program_days["articulation-28"]:
+    for lid in cur.program_days["speaking-sprint-28"]:
         les = cur.get(lid)
         ex, t = les["example"], les["exercise"]["target_seconds"]
         run = lambda text: cur.evaluate(les, analysis.analyze(  # noqa: E731

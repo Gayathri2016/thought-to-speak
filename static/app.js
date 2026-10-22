@@ -765,8 +765,8 @@ function renderLessonResult(lr, program) {
   el.className = `lesson-result ${lr.passed ? "pass" : "fail"}`;
   el.innerHTML = `<h4>${lr.passed ? (day ? `✓ Day ${day} of ${program?.total ?? 28} complete` : "✓ Lesson passed") : "Not yet — retry with the framework in mind"}</h4>
     ${lr.passed && program ? `<p class="small" style="margin:0 0 8px">${program.streak ? `🔥 ${program.streak}-day streak · ` : ""}${
-      program.complete ? "You finished the whole program. 🎉" : `Day ${day + 1} unlocks tomorrow.`}</p>` : ""}
-    ${milestone ? `<p class="milestone-hit">🏆 <b>${esc(milestone.when)}:</b> ${esc(milestone.title)}</p>` : ""}
+      program.complete ? "You finished the whole sprint. 🎉" : `Day ${day + 1} unlocks tomorrow.`}</p>` : ""}
+    ${milestone ? `<p class="milestone-hit">★ <b>${esc(milestone.when)}:</b> ${esc(milestone.title)}</p>` : ""}
     <ul>${lr.checks.map((k) => `<li><span class="${k.skipped ? "muted" : k.ok ? "ok" : "no"}">${k.skipped ? "–" : k.ok ? "✓" : "✗"}</span>
       <span>${esc(k.label)} <span class="muted">(you: ${esc(String(k.actual))})</span></span></li>`).join("")}</ul>
     <div class="row gap-s wrap-row">
@@ -821,12 +821,7 @@ function renderToday(t) {
         <div class="small">${esc(w.definition)}</div><div class="small muted"><i>${esc(w.example)}</i></div></div>`).join("")}</div>` : "";
 }
 
-/* ------------------------------------------------------------------ 28-day program (v7) */
-const SKILL_ICON = { confidence: "🙋", clarity: "🎯", explanation: "💡", persuasion: "⚖️", presence: "🎤",
-  composure: "🧘", leadership: "🧭", listening: "👂", writing: "✉️", rapport: "🤝", voice: "🔊", negotiation: "🤝",
-  storytelling: "📖", impromptu: "⚡", interviewing: "💼", conflict: "🕊️", boundaries: "🛑", influence: "🗣️",
-  accountability: "🛠️" };
-
+/* ------------------------------------------------------------------ 28-Day Speaking Sprint (v7) */
 function renderPrograms(list) {
   const el = $("programCard");
   const p = list && list[0];
@@ -835,14 +830,14 @@ function renderPrograms(list) {
   const cur = days.find((d) => d.day === p.current_day);
   const pct = (p.done / p.total) * 100;
   let cta;
-  if (!p.enrolled) cta = `<button class="gold" data-prog-start>Start Day 1 →</button><span class="small">~10 min a day · 28 days</span>`;
-  else if (p.complete) cta = `<b>🎉 Program complete — you're career-ready.</b><button class="ghost-light sm" data-prog-restart>Start again</button>`;
+  if (!p.enrolled) cta = `<button class="primary" data-prog-start>Start Day 1 →</button><span class="small">~10 min a day · 28 days</span>`;
+  else if (p.complete) cta = `<b>🎉 Sprint complete — you speak like a leader.</b><button class="ghost sm" data-prog-restart>Start again</button>`;
   else if (p.today_status === "done") cta = `<b>✓ Done for today.</b><span class="small">Day ${p.current_day} — ${esc(cur.title)} — unlocks tomorrow.</span>`;
-  else cta = `<button class="gold" data-day="${esc(cur.id)}">Start Day ${cur.day}: ${esc(cur.title)} →</button><span class="small">~${cur.minutes} min</span>`;
+  else cta = `<button class="primary" data-day="${esc(cur.id)}">Start Day ${cur.day}: ${esc(cur.title)} →</button><span class="small">~${cur.minutes} min</span>`;
   el.innerHTML = `<section class="program ${p.enrolled ? "enrolled" : ""}" aria-label="${esc(p.title)}">
     <div class="pg-head">
       <div>
-        <span class="pg-eyebrow">28-day program</span>
+        <span class="pg-eyebrow">Daily sprint · 28 days</span>
         <h2 class="pg-title">${esc(p.title)}</h2>
         <p class="pg-tag">${esc(p.tagline)}</p>
       </div>
@@ -854,7 +849,7 @@ function renderPrograms(list) {
       ${p.milestones.map((m) => `<span class="pg-mark ${m.reached ? "hit" : ""}" style="left:${(m.day / p.total) * 100}%"></span>`).join("")}
     </div>
     <div class="pg-milestones">${p.milestones.map((m) => `<div class="pg-ms ${m.reached ? "hit" : ""}">
-      <span>${m.reached ? "🏆" : "◯"} ${esc(m.when)}</span><small>${esc(m.title)}</small></div>`).join("")}</div>
+      <span>${m.reached ? "★" : "☆"} ${esc(m.when)}</span><small>${esc(m.title)}</small></div>`).join("")}</div>
     <div class="pg-cta">${cta}</div>
     <div class="pg-weeks">${p.weeks.map((w) => `<div class="pg-week">
       <div class="pg-week-h">${esc(w.title)}</div>
@@ -870,7 +865,7 @@ function renderPrograms(list) {
   if (start) start.onclick = async () => { await api(`/api/programs/${p.id}/start`, { method: "POST" }); openLesson(days[0].id); };
   const restart = el.querySelector("[data-prog-restart]");
   if (restart) restart.onclick = async () => {
-    if (!confirm("Restart the 28-day program from Day 1? Your past takes stay in History.")) return;
+    if (!confirm("Restart the Speaking Sprint from Day 1? Your past takes stay in History.")) return;
     await api(`/api/programs/${p.id}/start`, { method: "POST" }); loadLearn();
   };
 }

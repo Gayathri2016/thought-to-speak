@@ -2,7 +2,7 @@
 
 Journeys are self-paced: the next lesson unlocks as soon as you pass one.
 Programs (content/programs/*.json) are daily: you pass one day per calendar day, in the user's own timezone,
-and the next day unlocks the following morning — e.g. "Articulation Mastery in 28 Days".
+and the next day unlocks the following morning — e.g. "The 28-Day Speaking Sprint".
 """
 import json
 import random
