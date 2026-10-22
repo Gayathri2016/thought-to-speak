@@ -104,7 +104,9 @@ def compute(text: str, duration_seconds: float | None = None) -> dict:
         "seconds": round(seconds) if seconds else 0,
         "seconds_measured": bool(duration_seconds and duration_seconds > 3),
         "wpm": wpm,
-        "has_numbers": bool(re.search(r"\d|percent|\bhalf\b|\bdouble|\btwice\b|\bx\b", low)),
+        "has_numbers": bool(re.search(r"\d|percent|\bhalf\b|\bdouble|\btwice\b|\bx\b|\b(?:two|three|four|five|six|"
+                                      r"seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|"
+                                      r"hundred|thousand|million|billion)\b", low)),
     }
 
 

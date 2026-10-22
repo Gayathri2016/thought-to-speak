@@ -1,7 +1,12 @@
-"""Lessons (journeys → modules → lessons), pass criteria, and the daily plan."""
+"""Lessons (journeys → modules → lessons), daily programs, pass criteria, and the daily plan.
+
+Journeys are self-paced: the next lesson unlocks as soon as you pass one.
+Programs (content/programs/*.json) are daily: you pass one day per calendar day, in the user's own timezone,
+and the next day unlocks the following morning — e.g. "Articulation Mastery in 28 Days".
+"""
 import json
 import random
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from . import insights
@@ -10,10 +15,15 @@ from . import pronunciation as pron
 from .prompts import MODES
 
 CONTENT_DIR = Path(__file__).resolve().parent.parent / "content" / "journeys"
+PROGRAMS_DIR = Path(__file__).resolve().parent.parent / "content" / "programs"
+
+
+def _local_date(iso_utc: str, tz) -> date:
+    return datetime.fromisoformat(iso_utc).astimezone(tz).date()
 
 
 class Curriculum:
-    def __init__(self, content_dir: Path = CONTENT_DIR):
+    def __init__(self, content_dir: Path = CONTENT_DIR, programs_dir: Path | None = None):
         self.journeys = []
         for f in sorted(Path(content_dir).glob("*.json")):
             self.journeys.append(json.loads(f.read_text(encoding="utf-8")))
@@ -25,6 +35,24 @@ class Curriculum:
                     self.lessons[les["id"]] = {**les, "journey_id": j["id"], "module_id": mod["id"],
                                                "module_title": mod["title"]}
                     self.order.append(les["id"])
+        # Programs: their lessons are addressable like any lesson, but stay out of the self-paced `order`.
+        self.programs, self.program_days = {}, {}
+        pdir = Path(programs_dir) if programs_dir else (Path(content_dir).parent / "programs")
+        for f in sorted(pdir.glob("*.json")) if pdir.exists() else []:
+            prog = json.loads(f.read_text(encoding="utf-8"))
+            days = []
+            for mod in prog["modules"]:
+                for les in mod["lessons"]:
+                    self._validate(les)
+                    if les["id"] in self.lessons:
+                        raise ValueError(f"Duplicate lesson id {les['id']}")
+                    self.lessons[les["id"]] = {**les, "journey_id": prog["id"], "program_id": prog["id"],
+                                               "module_id": mod["id"], "module_title": mod["title"]}
+                    days.append(les["id"])
+            if [self.lessons[i]["day"] for i in days] != list(range(1, len(days) + 1)):
+                raise ValueError(f"Program {prog['id']} days must run 1..{len(days)} in order")
+            self.programs[prog["id"]] = prog
+            self.program_days[prog["id"]] = days
 
     @staticmethod
     def _validate(les):
@@ -133,9 +161,89 @@ class Curriculum:
                 return lid
         return None
 
+    # ------------------------------------------------------------------ daily programs
+    @staticmethod
+    def program_key(program_id: str) -> str:
+        return f"program:{program_id}"
+
+    def enroll(self, store, program_id: str, now: datetime) -> dict:
+        """Start (or restart) a program. Only passes after the start count, so a restart begins at Day 1."""
+        enrollment = {"started_at": now.astimezone(timezone.utc).isoformat(timespec="seconds"),
+                      "start_date": now.date().isoformat(), "after_row": store.last_row()}
+        store.meta_set(self.program_key(program_id), enrollment)
+        return enrollment
+
+    def program_state(self, store, program_id: str, now: datetime) -> dict:
+        """Where the user is in a program. `now` must be timezone-aware in the user's own timezone."""
+        prog, ids = self.programs[program_id], self.program_days[program_id]
+        tz, today = now.tzinfo, now.date()
+        enrollment = store.meta_get(self.program_key(program_id))
+        passes = store.lesson_pass_times(enrollment["started_at"], enrollment.get("after_row", 0)) if enrollment else {}
+        stats = store.lesson_stats()
+        days, prev_pass = [], None
+        for n, lid in enumerate(ids, start=1):
+            les = self.lessons[lid]
+            passed_on = _local_date(passes[lid], tz) if lid in passes else None
+            if n == 1:
+                unlocked, unlocks = True, None
+            elif prev_pass is None:
+                unlocked, unlocks = False, None
+            elif prev_pass < today:
+                unlocked, unlocks = True, None
+            else:
+                unlocked, unlocks = False, "tomorrow"
+            status = "done" if passed_on else "available" if unlocked else "tomorrow" if unlocks else "locked"
+            st = stats.get(lid, {})
+            days.append({"day": n, "id": lid, "title": les["title"], "summary": les.get("summary", ""),
+                         "minutes": les.get("minutes"), "skill": les.get("skill"), "mode": les["exercise"]["mode"],
+                         "framework": les["framework"]["name"], "week": les["module_title"],
+                         "status": status, "passed_on": passed_on.isoformat() if passed_on else None,
+                         "best": st.get("best"), "attempts": st.get("attempts", 0)})
+            prev_pass = passed_on
+        done = sum(d["status"] == "done" for d in days)
+        current = next((d for d in days if d["status"] != "done"), None)
+        pass_dates = sorted({d["passed_on"] for d in days if d["passed_on"]}, reverse=True)
+        streak, expect = 0, today
+        if pass_dates and date.fromisoformat(pass_dates[0]) < today:
+            expect = today - timedelta(days=1)          # streak still alive until today ends
+        for ds in pass_dates:
+            if date.fromisoformat(ds) == expect:
+                streak += 1
+                expect -= timedelta(days=1)
+            else:
+                break
+        return {
+            "id": program_id, "title": prog["title"], "tagline": prog.get("tagline", ""),
+            "description": prog.get("description", ""), "enrolled": bool(enrollment),
+            "start_date": enrollment["start_date"] if enrollment else None,
+            "total": len(days), "done": done, "complete": done == len(days),
+            "current_day": current["day"] if current else None,
+            "today_status": "complete" if done == len(days) else
+                            "done" if any(d["passed_on"] == today.isoformat() for d in days) else
+                            "available" if current and current["status"] == "available" else "locked",
+            "streak": streak,
+            "milestones": [{**m, "reached": done >= m["day"]} for m in prog.get("milestones", [])],
+            "weeks": [{"id": m["id"], "title": m["title"], "goal": m.get("goal", ""),
+                       "days": [d for d in days if d["id"] in {les["id"] for les in m["lessons"]}]}
+                      for m in prog["modules"]],
+        }
+
+    def program_gate(self, store, lesson: dict, now: datetime) -> str | None:
+        """None if this program day can be practised now, else a message explaining when it unlocks."""
+        pid = lesson.get("program_id")
+        if not pid:
+            return None
+        st = self.program_state(store, pid, now)
+        day = next(d for w in st["weeks"] for d in w["days"] if d["id"] == lesson["id"])
+        if day["status"] in ("done", "available"):
+            return None
+        if day["status"] == "tomorrow":
+            return f"Day {day['day']} unlocks tomorrow — one day at a time builds the habit."
+        return f"Finish Day {day['day'] - 1} first."
+
     # ------------------------------------------------------------------ daily plan
-    def today(self, store) -> dict:
-        now = datetime.now().astimezone()
+    def today(self, store, now: datetime | None = None) -> dict:
+        now = now or datetime.now().astimezone()
         day = now.date().isoformat()
         start_utc = datetime.combine(now.date(), time.min, tzinfo=now.tzinfo).astimezone(timezone.utc)
         todays = store.since(start_utc.isoformat(timespec="seconds"))
@@ -174,7 +282,10 @@ class Curriculum:
              "mode": "Toastmasters", "prompt": plan["warmup_prompt"], "minutes": 2,
              "target_seconds": [20, 40], "challenge_mode": False, "done": done("warmup")},
         ]
-        if lesson:
+        program = self._today_program_item(store, now)
+        if program:
+            items.append(program)
+        elif lesson:
             items.append({
                 "key": "lesson", "kind": "lesson", "title": f"Lesson: {lesson['title']}",
                 "detail": lesson.get("summary", ""), "lesson_id": lesson["id"], "mode": lesson["exercise"]["mode"],
@@ -201,4 +312,24 @@ class Curriculum:
         return {"date": day, "items": items, "minutes": total_min,
                 "words": [{**w, "used": w["word"] in used_today} for w in words],
                 "completed": sum(1 for i in items if i["done"]), "total": len(items),
-                "lessons_done": sum(1 for s in stats.values() if s.get("passed")), "lessons_total": len(self.order)}
+                "lessons_done": sum(1 for lid in self.order if stats.get(lid, {}).get("passed")),
+                "lessons_total": len(self.order)}
+
+    def _today_program_item(self, store, now: datetime) -> dict | None:
+        """While enrolled in an unfinished program, today's lesson slot is the program's day."""
+        for pid in self.programs:
+            if not store.meta_get(self.program_key(pid)):
+                continue
+            st = self.program_state(store, pid, now)
+            if st["complete"]:
+                continue
+            days = [d for w in st["weeks"] for d in w["days"]]
+            done_today = [d for d in days if d["passed_on"] == now.date().isoformat()]
+            d = done_today[-1] if done_today else next(x for x in days if x["status"] != "done")
+            nxt = d["day"] + 1 if done_today and d["day"] < st["total"] else None
+            return {"key": "lesson", "kind": "lesson", "program_id": pid, "day": d["day"],
+                    "title": f"Day {d['day']} of {st['total']}: {d['title']}",
+                    "detail": f"Done for today ✓ Day {nxt} unlocks tomorrow." if nxt else d["summary"],
+                    "lesson_id": d["id"], "mode": d["mode"], "minutes": d["minutes"] or 10,
+                    "done": bool(done_today), "attempted": d["attempts"] > 0}
+        return None

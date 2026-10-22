@@ -12,8 +12,10 @@ const state = {
   elapsed: 0, tickStart: null, timerId: null, spokeSeconds: 0,
 };
 
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { return ""; } })();
+
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, credentials: "same-origin", ...opts });
+  const r = await fetch(path, { headers: { "Content-Type": "application/json", "X-Timezone": TZ }, credentials: "same-origin", ...opts });
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && !path.startsWith("/api/auth/")) showAuth("signin", "Your session ended — please sign in again.");
   if (!r.ok) throw new Error(data.detail || `Request failed (${r.status})`);
@@ -313,7 +315,7 @@ async function analyze() {
       const fd = new FormData();
       fd.append("audio", encodeWav(state.audioChunks, state.audioRate), "take.wav");
       fd.append("payload", JSON.stringify(body));
-      const resp = await fetch("/api/analyze-audio", { method: "POST", body: fd });
+      const resp = await fetch("/api/analyze-audio", { method: "POST", body: fd, headers: { "X-Timezone": TZ } });
       r = await resp.json().catch(() => ({}));
       if (resp.status === 401) showAuth("signin", "Your session ended — please sign in again.");
       if (!resp.ok) throw new Error(r.detail || `Request failed (${resp.status})`);
@@ -326,7 +328,7 @@ async function analyze() {
     renderVoice(r.analysis.voice, r.attempt.id);
     renderPronunciation(r.analysis);
     renderLanguage(r.analysis);
-    renderLessonResult(r.lesson_result);
+    renderLessonResult(r.lesson_result, r.program);
     if (r.comparison) renderComparison(r.comparison, r.attempt.chain_id);
     else $("compareCard").classList.add("hidden");
     $("status").textContent = r.attempt.attempt_no > 1 ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
@@ -745,7 +747,7 @@ function drawPitch(contour, dur) {
 }
 
 /* ------------------------------------------------------------------ learn (v3) */
-function renderLessonResult(lr) {
+function renderLessonResult(lr, program) {
   const el = $("lessonResult");
   const c = state.ctx;
   if (!lr) {
@@ -758,8 +760,13 @@ function renderLessonResult(lr) {
     return;
   }
   const lesson = state.lesson;
+  const day = lesson?.program?.day;
+  const milestone = lr.passed && program ? (program.milestones || []).find((m) => m.day === day) : null;
   el.className = `lesson-result ${lr.passed ? "pass" : "fail"}`;
-  el.innerHTML = `<h4>${lr.passed ? "✓ Lesson passed" : "Not yet — retry with the framework in mind"}</h4>
+  el.innerHTML = `<h4>${lr.passed ? (day ? `✓ Day ${day} of ${program?.total ?? 28} complete` : "✓ Lesson passed") : "Not yet — retry with the framework in mind"}</h4>
+    ${lr.passed && program ? `<p class="small" style="margin:0 0 8px">${program.streak ? `🔥 ${program.streak}-day streak · ` : ""}${
+      program.complete ? "You finished the whole program. 🎉" : `Day ${day + 1} unlocks tomorrow.`}</p>` : ""}
+    ${milestone ? `<p class="milestone-hit">🏆 <b>${esc(milestone.when)}:</b> ${esc(milestone.title)}</p>` : ""}
     <ul>${lr.checks.map((k) => `<li><span class="${k.skipped ? "muted" : k.ok ? "ok" : "no"}">${k.skipped ? "–" : k.ok ? "✓" : "✗"}</span>
       <span>${esc(k.label)} <span class="muted">(you: ${esc(String(k.actual))})</span></span></li>`).join("")}</ul>
     <div class="row gap-s wrap-row">
@@ -773,8 +780,9 @@ function renderLessonResult(lr) {
 }
 
 async function loadLearn() {
-  const [today, journeys] = await Promise.all([api("/api/today"), api("/api/journey")]);
+  const [today, journeys, programs] = await Promise.all([api("/api/today"), api("/api/journey"), api("/api/programs")]);
   state.todayWords = today.words || [];
+  renderPrograms(programs);
   renderToday(today);
   renderJourneys(journeys);
   if (!state.lesson || $("lessonView").classList.contains("hidden")) showLearnHome();
@@ -813,6 +821,60 @@ function renderToday(t) {
         <div class="small">${esc(w.definition)}</div><div class="small muted"><i>${esc(w.example)}</i></div></div>`).join("")}</div>` : "";
 }
 
+/* ------------------------------------------------------------------ 28-day program (v7) */
+const SKILL_ICON = { confidence: "🙋", clarity: "🎯", explanation: "💡", persuasion: "⚖️", presence: "🎤",
+  composure: "🧘", leadership: "🧭", listening: "👂", writing: "✉️", rapport: "🤝", voice: "🔊", negotiation: "🤝",
+  storytelling: "📖", impromptu: "⚡", interviewing: "💼", conflict: "🕊️", boundaries: "🛑", influence: "🗣️",
+  accountability: "🛠️" };
+
+function renderPrograms(list) {
+  const el = $("programCard");
+  const p = list && list[0];
+  if (!p) { el.innerHTML = ""; return; }
+  const days = p.weeks.flatMap((w) => w.days);
+  const cur = days.find((d) => d.day === p.current_day);
+  const pct = (p.done / p.total) * 100;
+  let cta;
+  if (!p.enrolled) cta = `<button class="gold" data-prog-start>Start Day 1 →</button><span class="small">~10 min a day · 28 days</span>`;
+  else if (p.complete) cta = `<b>🎉 Program complete — you're career-ready.</b><button class="ghost-light sm" data-prog-restart>Start again</button>`;
+  else if (p.today_status === "done") cta = `<b>✓ Done for today.</b><span class="small">Day ${p.current_day} — ${esc(cur.title)} — unlocks tomorrow.</span>`;
+  else cta = `<button class="gold" data-day="${esc(cur.id)}">Start Day ${cur.day}: ${esc(cur.title)} →</button><span class="small">~${cur.minutes} min</span>`;
+  el.innerHTML = `<section class="program ${p.enrolled ? "enrolled" : ""}" aria-label="${esc(p.title)}">
+    <div class="pg-head">
+      <div>
+        <span class="pg-eyebrow">28-day program</span>
+        <h2 class="pg-title">${esc(p.title)}</h2>
+        <p class="pg-tag">${esc(p.tagline)}</p>
+      </div>
+      ${p.enrolled ? `<div class="pg-stats"><div><b>${p.done}</b><span>of ${p.total} days</span></div>
+        <div><b>${p.streak ? "🔥 " + p.streak : "–"}</b><span>day streak</span></div></div>` : ""}
+    </div>
+    <div class="pg-track" role="img" aria-label="${p.done} of ${p.total} days complete">
+      <div class="pg-fill" style="width:${pct}%"></div>
+      ${p.milestones.map((m) => `<span class="pg-mark ${m.reached ? "hit" : ""}" style="left:${(m.day / p.total) * 100}%"></span>`).join("")}
+    </div>
+    <div class="pg-milestones">${p.milestones.map((m) => `<div class="pg-ms ${m.reached ? "hit" : ""}">
+      <span>${m.reached ? "🏆" : "◯"} ${esc(m.when)}</span><small>${esc(m.title)}</small></div>`).join("")}</div>
+    <div class="pg-cta">${cta}</div>
+    <div class="pg-weeks">${p.weeks.map((w) => `<div class="pg-week">
+      <div class="pg-week-h">${esc(w.title)}</div>
+      ${w.days.map((d) => `<button class="pg-day ${d.status}" data-day="${esc(d.id)}" title="${esc(d.summary)}">
+        <span class="pg-dn">${d.status === "done" ? "✓" : d.day}</span>
+        <span class="pg-dt">${esc(d.title)}</span>
+        <span class="pg-ds">${d.status === "done" ? (d.best != null ? d.best : "") : d.status === "available" ? (p.enrolled || d.day === 1 ? "today" : "")
+          : d.status === "tomorrow" ? "tomorrow" : "🔒"}</span>
+      </button>`).join("")}</div>`).join("")}</div>
+  </section>`;
+  el.querySelectorAll("[data-day]").forEach((b) => (b.onclick = () => openLesson(b.dataset.day)));
+  const start = el.querySelector("[data-prog-start]");
+  if (start) start.onclick = async () => { await api(`/api/programs/${p.id}/start`, { method: "POST" }); openLesson(days[0].id); };
+  const restart = el.querySelector("[data-prog-restart]");
+  if (restart) restart.onclick = async () => {
+    if (!confirm("Restart the 28-day program from Day 1? Your past takes stay in History.")) return;
+    await api(`/api/programs/${p.id}/start`, { method: "POST" }); loadLearn();
+  };
+}
+
 function renderJourneys(list) {
   $("journeys").innerHTML = list.map((j, ji) => {
     let n = 0;
@@ -841,7 +903,14 @@ async function openLesson(id) {
   const l = await api(`/api/lessons/${encodeURIComponent(id)}`);
   state.lesson = l;
   $("learnHome").classList.add("hidden"); $("lessonView").classList.remove("hidden");
-  $("lessonEyebrow").textContent = `Lesson ${l.index} of ${l.count} · ${l.module_title} · ~${l.minutes} min`;
+  $("lessonEyebrow").textContent = l.program
+    ? `Day ${l.program.day} of ${l.count} · ${l.module_title} · ~${l.minutes} min`
+    : `Lesson ${l.index} of ${l.count} · ${l.module_title} · ~${l.minutes} min`;
+  const lessonLabel = l.program ? `Day ${l.program.day}: ${l.title}` : `Lesson ${l.index}: ${l.title}`;
+  const gate = l.program?.gate;
+  $("lessonGate").textContent = gate ? `🔒 ${gate} You can read the lesson now.` : "";
+  $("lessonGate").classList.toggle("hidden", !gate);
+  $("practiceLessonBtn").disabled = !!gate;
   $("lessonTitle").textContent = l.title;
   $("lessonSummary").textContent = l.summary || "";
   $("lessonConcept").innerHTML = l.concept.map((p) => `<p>${esc(p)}</p>`).join("");
@@ -864,12 +933,12 @@ async function openLesson(id) {
   $("lessonProgressNote").textContent = pr.passed ? `✓ Passed · best ${pr.best}` : pr.attempts ? `${pr.attempts} take(s) · best ${pr.best}` : "";
   $("practiceLessonBtn").onclick = () => ra ? practiceWith({
     mode: READ_ALOUD, prompt: $("exPromptSelect").value,
-    ctx: { kind: "lesson", lessonId: l.id, title: `Lesson ${l.index}: ${l.title}`, constraint: e.constraint,
+    ctx: { kind: "lesson", lessonId: l.id, title: lessonLabel, constraint: e.constraint,
       steps: [e.instructions], target: e.target_seconds || [4, 12], prompts,
       focus: ra.items.flatMap((i) => i.focus || []) },
   }) : practiceWith({
     mode: e.mode, prompt: $("exPromptSelect").value, challenge: !!e.challenge_mode,
-    ctx: { kind: "lesson", lessonId: l.id, title: `Lesson ${l.index}: ${l.title}`, constraint: e.constraint,
+    ctx: { kind: "lesson", lessonId: l.id, title: lessonLabel, constraint: e.constraint,
       steps: [e.instructions], framework: l.framework.steps.map((s) => s.label), frameworkName: l.framework.name,
       target: e.target_seconds, prompts: e.prompts },
   });

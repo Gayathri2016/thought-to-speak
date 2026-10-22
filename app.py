@@ -8,6 +8,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -103,6 +104,18 @@ def _set_session(request: Request, response: Response, user_id: str):
 
 def _public_user(u: dict) -> dict:
     return {"id": u["id"], "email": u["email"], "name": u.get("name"), "created_at": u.get("created_at")}
+
+
+def user_now(request: Request) -> datetime:
+    """The current time in the user's own timezone (sent by the browser as X-Timezone, e.g. America/Los_Angeles),
+    so "today" and daily unlocks follow their calendar, not the server's."""
+    name = (request.headers.get("x-timezone") or "").strip()
+    if name and len(name) < 64:
+        try:
+            return datetime.now(ZoneInfo(name))
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return datetime.now().astimezone()
 
 
 def _check_quota(us: UserStore):
@@ -204,13 +217,14 @@ def get_prompt(mode: str = "Interview", exclude: str | None = None):
 
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest, us: UserStore = Depends(user_store)):
+def analyze(req: AnalyzeRequest, request: Request, us: UserStore = Depends(user_store)):
     _check_quota(us)
-    return _analyze(us, req, req.transcript.strip())
+    _check_program_gate(us, req, user_now(request))
+    return _analyze(us, req, req.transcript.strip(), now=user_now(request))
 
 
 @app.post("/api/analyze-audio")
-async def analyze_audio(audio: UploadFile = File(...), payload: str = Form("{}"),
+async def analyze_audio(request: Request, audio: UploadFile = File(...), payload: str = Form("{}"),
                         us: UserStore = Depends(user_store)):
     """Real-audio path: the recorded take is analyzed acoustically (pauses, pace, pitch, volume) and,
     when Whisper is available, re-transcribed verbatim with word timestamps."""
@@ -219,6 +233,8 @@ async def analyze_audio(audio: UploadFile = File(...), payload: str = Form("{}")
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(422, f"Bad payload: {e}")
     _check_quota(us)
+    now = user_now(request)
+    _check_program_gate(us, req, now)
     data = await audio.read()
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Recording too large (max 25 MB).")
@@ -244,7 +260,7 @@ async def analyze_audio(audio: UploadFile = File(...), payload: str = Form("{}")
         raise HTTPException(400, str(e))
     voice["transcript_source"] = source
     voice["browser_transcript"] = req.transcript.strip() if words else None
-    out = await run_in_threadpool(_analyze, us, req, text, voice, name, words)
+    out = await run_in_threadpool(_analyze, us, req, text, voice, name, words, now)
     if warn:
         out["analysis"]["warning"] = " ".join(filter(None, [out["analysis"].get("warning"), warn]))
     return out
@@ -261,8 +277,15 @@ def get_audio(attempt_id: str, us: UserStore = Depends(user_store)):
     return FileResponse(path, media_type="audio/wav")
 
 
+def _check_program_gate(us: UserStore, req: AnalyzeRequest, now: datetime):
+    lesson = curriculum.get(req.lesson_id) if req.lesson_id else None
+    msg = curriculum.program_gate(us, lesson, now) if lesson else None
+    if msg:
+        raise HTTPException(403, msg)
+
+
 def _analyze(store: UserStore, req: AnalyzeRequest, text: str, voice: dict | None = None, audio_name: str | None = None,
-             words: list[dict] | None = None):
+             words: list[dict] | None = None, now: datetime | None = None):
     if len(text.split()) < (1 if req.kind == "read_aloud" or req.target_text else 3):
         if audio_name:
             (AUDIO_DIR / audio_name).unlink(missing_ok=True)
@@ -294,6 +317,9 @@ def _analyze(store: UserStore, req: AnalyzeRequest, text: str, voice: dict | Non
     if not req.save:
         return {"analysis": result, "lesson_result": lesson_result}
 
+    pid = lesson.get("program_id") if lesson else None
+    if pid and not store.meta_get(curriculum.program_key(pid)):
+        curriculum.enroll(store, pid, now or datetime.now().astimezone())   # practising Day 1 starts the program
     chain_id = req.chain_id if req.chain_id and store.chain(req.chain_id) else None
     rec = store.add_attempt(mode=mode, prompt=prompt, transcript=text,
                             challenge_mode=req.challenge_mode, duration_seconds=req.duration_seconds,
@@ -302,6 +328,10 @@ def _analyze(store: UserStore, req: AnalyzeRequest, text: str, voice: dict | Non
                             lesson_passed=lesson_result["passed"] if lesson_result else None,
                             audio_path=audio_name)
     out = {"attempt": rec, "analysis": result, "comparison": None, "lesson_result": lesson_result}
+    if pid:
+        st = curriculum.program_state(store, pid, now or datetime.now().astimezone())
+        out["program"] = {k: st[k] for k in ("id", "title", "done", "total", "complete", "current_day",
+                                             "today_status", "streak", "milestones")}
     if rec["attempt_no"] > 1:
         chain = store.chain(rec["chain_id"])
         out["comparison"] = insights.compare(chain[-2], rec)
@@ -315,10 +345,18 @@ def journey(us: UserStore = Depends(user_store)):
 
 
 @app.get("/api/lessons/{lesson_id}")
-def lesson_detail(lesson_id: str, us: UserStore = Depends(user_store)):
+def lesson_detail(lesson_id: str, request: Request, us: UserStore = Depends(user_store)):
     les = curriculum.get(lesson_id)
     if not les:
         raise HTTPException(404, "Unknown lesson")
+    if les.get("program_id"):
+        pid = les["program_id"]
+        st = curriculum.program_state(us, pid, user_now(request))
+        day = next(d for w in st["weeks"] for d in w["days"] if d["id"] == lesson_id)
+        return {**les, "progress": us.lesson_stats().get(lesson_id, {}), "next_lesson_id": None,
+                "index": les["day"], "count": st["total"],
+                "program": {"id": pid, "title": st["title"], "day": les["day"], "status": day["status"],
+                            "enrolled": st["enrolled"], "gate": curriculum.program_gate(us, les, user_now(request))}}
     order = [i for i in curriculum.order if curriculum.get(i)["journey_id"] == les["journey_id"]]
     idx = order.index(lesson_id)
     nxt = order[idx + 1] if idx + 1 < len(order) else None
@@ -358,8 +396,24 @@ def vocab_bank(us: UserStore = Depends(user_store)):
 
 
 @app.get("/api/today")
-def today(us: UserStore = Depends(user_store)):
-    return curriculum.today(us)
+def today(request: Request, us: UserStore = Depends(user_store)):
+    return curriculum.today(us, user_now(request))
+
+
+@app.get("/api/programs")
+def programs(request: Request, us: UserStore = Depends(user_store)):
+    now = user_now(request)
+    return [curriculum.program_state(us, pid, now) for pid in curriculum.programs]
+
+
+@app.post("/api/programs/{program_id}/start")
+def start_program(program_id: str, request: Request, us: UserStore = Depends(user_store)):
+    """Enroll in a program — or restart it from Day 1 (earlier takes stay in your history)."""
+    if program_id not in curriculum.programs:
+        raise HTTPException(404, "Unknown program")
+    now = user_now(request)
+    curriculum.enroll(us, program_id, now)
+    return curriculum.program_state(us, program_id, now)
 
 
 @app.get("/api/compare")
