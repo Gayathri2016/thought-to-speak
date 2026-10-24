@@ -436,6 +436,8 @@ function renderReview(a) {
         <button class="ghost sm" id="rvFollow">🎙️ Answer it</button></div>
     </section>
 
+    ${renderCorrections(r.corrections, a.challenge_mode)}
+
     <section class="rv-sec">
       <div class="rv-h"><span class="rv-who">🧱 Your answer, part by part</span><span class="small muted">${esc(a.framework_name)}</span></div>
       <div class="rv-parts">${parts.map((p) => `<div class="rv-part ${esc(p.status)}">
@@ -481,6 +483,24 @@ function renderReview(a) {
     if (co.do_next?.length) $("status").textContent = `Focus: ${co.do_next[0]}`;
   };
   if ($("rvHear")) $("rvHear").onclick = () => speak(co.stronger_version, 0.95);
+  if ($("rvHearFixed")) $("rvHearFixed").onclick = () => speak(r.corrections.corrected_full, 0.95);
+}
+
+function renderCorrections(c, challenge) {
+  const items = c?.items || [];
+  if (!items.length) return `<section class="rv-sec rv-fix"><div class="rv-h"><span class="rv-who">✍️ Corrections</span></div>
+    <p class="small muted">No corrections needed — your sentences came through clean.</p></section>`;
+  return `<section class="rv-sec rv-fix">
+    <div class="rv-h"><span class="rv-who">✍️ Corrections</span><span class="small muted">${challenge ? "find the fix yourself" : "what you said → how to say it"}</span></div>
+    <ol class="rv-corr">${items.map((x) => `<li>
+      <div class="rv-said"><span class="eyebrow">You said</span><q>${esc(x.original)}</q></div>
+      ${x.corrected ? `<div class="rv-better"><span class="eyebrow">Say</span><span>${esc(x.corrected)}</span></div>` : ""}
+      ${(x.changes || []).length || (x.notes || []).length ? `<ul class="rv-why">${[...(x.changes || []), ...(x.notes || [])]
+        .map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ol>
+    ${c.corrected_full ? `<details class="rv-drill"><summary>📝 Your whole answer, corrected</summary>
+      <p class="rv-strong">${esc(c.corrected_full)}</p><button class="ghost sm" id="rvHearFixed">▶ Listen</button>
+      <p class="small muted">Same words and meaning — just fixed. Read it aloud once, then answer again from memory.</p></details>` : ""}
+  </section>`;
 }
 
 function deltaCell(d) {

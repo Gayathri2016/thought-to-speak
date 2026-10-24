@@ -7,6 +7,7 @@ well and keeps the local version for anything missing, so the panel is always co
 """
 import re
 
+from . import corrections as corrections_mod
 from . import metrics
 
 # Who is listening, per mode — the evaluator speaks as this person.
@@ -308,7 +309,7 @@ def coach(mode: str, sents: list[str], scores: dict, parts: list[dict], order_no
     if framework:
         do_next.append(f"Before you hit record, say the parts out loud: {' → '.join(framework)}.")
     if m["filler_rate"] >= 3:
-        do_next.append("When you feel an \u201cum\u201d coming, pause silently instead.")
+        do_next.append("When you feel an “um” coming, pause silently instead.")
     elif not m["has_numbers"] and mode in ("Interview", "FDE / Customer", "Leadership"):
         do_next.append("Say one number out loud — %, time, money or people.")
     return {"fixes": fixes[:3], "do_next": do_next[:3], "drill": DRILLS[weakest], "stronger_version": None,
@@ -382,6 +383,7 @@ def local_review(text: str, mode: str, spec: dict, m: dict, scores: dict, cues: 
     digest = history_digest((history or []) + [current])    # the mentor sees this take too
     return {
         "evaluator": evaluator(mode, sents, text, scores, bd["parts"], m),
+        "corrections": corrections_mod.correct(text),
         "breakdown": bd,
         "coach": coach(mode, sents, scores, bd["parts"], bd["order_note"], m, labels),
         "mentor": mentor(digest, scores),
@@ -442,12 +444,29 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
                 r["coach"]["drill"] = {"title": str(dr["title"]), "steps": [str(s) for s in dr["steps"]][:4]}
             if isinstance(co.get("stronger_version"), str) and co["stronger_version"].strip():
                 r["coach"]["stronger_version"] = co["stronger_version"].strip()
+        cr = data.get("corrections")
+        if isinstance(cr, dict) and isinstance(cr.get("items"), list):
+            items = []
+            for x in cr["items"][:6]:
+                if isinstance(x, dict) and x.get("original") and (x.get("corrected") or x.get("changes")):
+                    items.append({"original": str(x["original"]).strip(),
+                                  "corrected": (str(x["corrected"]).strip() or None) if x.get("corrected") else None,
+                                  "changes": [str(c).strip() for c in x.get("changes") or [] if str(c).strip()][:4],
+                                  "notes": [str(c).strip() for c in x.get("notes") or [] if str(c).strip()][:2]})
+            if items or cr.get("corrected_full"):
+                r["corrections"] = {"items": items, "source": "ai",
+                                    "corrected_full": (str(cr.get("corrected_full")).strip() or None)
+                                    if cr.get("corrected_full") else None}
         me = data.get("mentor") or {}
         if isinstance(me, dict):
             for key in ("pattern", "improving", "habit"):
                 if isinstance(me.get(key), str) and me[key].strip():
                     r["mentor"][key] = me[key].strip()
         r["source"] = "ai"
-    if challenge:  # Challenge Mode never hands over an answer
+    if challenge:  # Challenge Mode never hands over an answer: show what's wrong, not the corrected words
         r["coach"]["stronger_version"] = None
+        cr = dict(r.get("corrections") or {})
+        cr["items"] = [{**x, "corrected": None} for x in cr.get("items", [])]
+        cr["corrected_full"] = None
+        r["corrections"] = cr
     return r

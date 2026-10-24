@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.1 — corrections
+- New **Corrections** section in every review: each sentence that needs work as "You said → Say", with what
+  changed and why, plus your whole answer corrected (with ▶ Listen).
+- Works without an API key: removes fillers, false starts and self-repairs ("I am ready for, we are ready
+  for lunch"), repeated words, splits "and … and …" run-ons, fixes common grammar and article slips, and flags
+  vague phrases. With an API key the AI corrects word choice and grammar more fully.
+- Challenge Mode shows what's wrong but not the corrected words.
+
 ## v8 — feedback from three angles
 - Every take now gets a review from the people who matter:
   - **Evaluator** — the interviewer, audience, leadership team or customer (depending on the mode) gives a

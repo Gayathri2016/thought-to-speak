@@ -479,3 +479,11 @@ body.signed-out .top, body.signed-out #appMain { display: none; }
 .rv-strong { line-height: 1.65; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
 .rv-mentor { border-left: 4px solid var(--accent); }
 .rv-src { margin: 0; text-align: right; }
+.rv-fix { border-left: 4px solid var(--warn); }
+.rv-corr { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 12px; font-size: 14px; }
+.rv-said, .rv-better { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: baseline; }
+.rv-said .eyebrow, .rv-better .eyebrow { margin: 0 !important; }
+.rv-said q { color: var(--ink-2); }
+.rv-better span:last-child { font-weight: 650; color: var(--good); }
+.rv-why { margin: 4px 0 0 72px; padding-left: 16px; font-size: 13px; color: var(--ink-2); }
+@media (max-width: 520px) { .rv-said, .rv-better { grid-template-columns: 1fr; gap: 2px; } .rv-why { margin-left: 0; } }

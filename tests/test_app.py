@@ -647,3 +647,50 @@ def test_ai_prompt_carries_role_and_history(monkeypatch):
     analysis.analyze(STRONG, "FDE / Customer", "", history=hist)
     assert "Evaluator: The customer" in seen["user"] and "Recent history (3 takes" in seen["user"]
     assert "Result missing in 3" in seen["user"] and '"review"' in seen["system"]
+
+
+# ----------------------------------------------------------------------------- v8.1: corrections
+LUNCH = ("yes, I am ready for, we are ready for lunch, and I have prepared sambar curry, and once we are done "
+         "with the lunch, we can relax and do something else.")
+
+
+def test_corrections_fix_false_start_run_on_and_articles():
+    from coach import corrections
+    r = corrections.correct(LUNCH)
+    assert r["corrected_full"] == ("Yes, we are ready for lunch. I have prepared sambar curry. Once we are done with "
+                                   "lunch, we can relax and do something else.")
+    why = " ".join(c for i in r["items"] for c in i["changes"] + i["notes"])
+    assert "false start" in why and "I am ready for" in why and "run-on" in why
+    assert "meals don't take" in why and "something else" in why
+    # the same speech without punctuation (browser speech-to-text) gets the same fixes
+    raw = corrections.correct(LUNCH.replace(",", "").replace(".", ""))["corrected_full"]
+    assert raw.startswith("Yes, we are ready for lunch. I have prepared sambar curry. Once we are done with lunch")
+    messy = corrections.correct("um so basically I went to the I went to the store and the the manager he don't know")
+    assert messy["corrected_full"].startswith("I went to the store and the manager he doesn't know")
+
+
+def test_clean_speech_is_not_corrected():
+    from coach import corrections
+    assert corrections.correct(STRONG)["items"] == [] and corrections.correct(STRONG)["corrected_full"] is None
+    assert corrections.correct("I would like to explain it. We met in the morning.")["items"] == []
+
+
+def test_corrections_in_review_and_challenge_mode(client):
+    r = client.post("/api/analyze", json={"transcript": LUNCH, "mode": "Toastmasters"}).json()["analysis"]["review"]
+    assert r["corrections"]["items"][0]["corrected"].startswith("Yes, we are ready for lunch.")
+    c = client.post("/api/analyze", json={"transcript": LUNCH, "mode": "Toastmasters",
+                                          "challenge_mode": True}).json()["analysis"]["review"]["corrections"]
+    assert c["items"] and all(i["corrected"] is None for i in c["items"]) and c["corrected_full"] is None
+    assert c["items"][0]["changes"]                                     # still says what's wrong
+
+
+def test_llm_corrections_replace_local(monkeypatch):
+    from coach import analysis, llm
+    fake = {"scores": {}, "review": {"corrections": {"items": [{"original": LUNCH, "corrected": "Yes, we're ready for lunch.",
+                                                                "changes": ["Removed the false start."]}],
+                                                     "corrected_full": "Yes, we're ready for lunch. I made sambar."}}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (json.loads(json.dumps(fake)), "anthropic:test"))
+    c = analysis.analyze(LUNCH, "Toastmasters", "")["review"]["corrections"]
+    assert c["source"] == "ai" and c["items"][0]["corrected"] == "Yes, we're ready for lunch."
+    assert c["corrected_full"].endswith("I made sambar.")

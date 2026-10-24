@@ -56,6 +56,8 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 **Feedback from three angles — new in v8**
 - **Evaluator:** the interviewer / audience / customer gives a verdict, quotes what landed and what raised a
   doubt, and asks the follow-up they'd ask next (one click to practise it).
+- **Corrections:** every sentence that needs work as "You said → Say", with what changed — false starts,
+  run-ons, grammar, fillers and vague words — plus your whole answer corrected.
 - **Part by part:** your answer split into its framework parts, quoting your own words.
 - **Coach:** top three fixes, a plan for the next take, a 2-minute drill, and (with an API key) a stronger
   version of your own answer.
@@ -146,6 +148,7 @@ Design choices:
 app.py               FastAPI routes
 coach/analysis.py    heuristic + LLM analysis, Challenge Mode guard
 coach/review.py      evaluator / coach / mentor review and part-by-part breakdown
+coach/corrections.py sentence corrections: false starts, run-ons, fillers, grammar
 coach/audio.py       waveform analysis and voice scores (numpy)
 coach/transcribe.py  Whisper: OpenAI API or local faster-whisper
 coach/metrics.py     fillers, hedges, vague words, WPM

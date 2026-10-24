@@ -323,6 +323,10 @@ Return ONLY a JSON object with exactly these keys:
       "follow_up": str,             // the question this evaluator would most likely ask next
       "to_strong_yes": [str]        // 1-2 specific changes that would earn the top verdict
     },
+    "corrections": {                // sentence-level corrections of what they actually said
+      "items": [{"original": str, "corrected": str, "changes": [str], "notes": [str]}],  // 0-6, worst first
+      "corrected_full": str         // their whole answer, corrected — same words and meaning, just fixed
+    },
     "breakdown": [{"label": str, "status": "present"|"weak"|"missing", "quote": str|null, "note": str}],
     "order_note": str|null,         // only if the parts came out in a confusing order
     "coach": {
@@ -360,6 +364,12 @@ REVIEW rules — the review is the heart of the feedback:
   customer). Speak in first person as that person, honestly and specifically: would this move them, and why.
   Use "strong_yes" only for an answer you would genuinely remember. Quotes must be the speaker's exact words
   (short excerpts, <= 25 words). follow_up must be the natural next question that person would ask.
+- corrections: correct what they actually SAID, sentence by sentence, the way a good English teacher would:
+  false starts and self-repairs ("I am ready for, we are ready for lunch"), run-ons chained with "and",
+  grammar, wrong or missing articles, word choice, fillers, and vague phrases. "original" is their exact
+  sentence; "corrected" keeps their words and meaning (fix, don't rewrite); "changes" explains each fix in a
+  few words. Skip speech-to-text artifacts (missing punctuation/capitals alone is not an error). In
+  challenge_mode set "corrected" and "corrected_full" to "" and describe the problems only.
 - breakdown: one entry per framework label, in framework order; "quote" is the speaker's words that did that
   part (null if missing); "note" says how well it did it.
 - coach: you are their speaking coach preparing them for the real thing. fixes quote their words and say
