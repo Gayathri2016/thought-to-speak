@@ -562,3 +562,88 @@ def test_every_program_day_passes_its_model_answer_and_fails_the_before(monkeypa
             clean(text), les["exercise"]["mode"], ex["prompt"], False, sum(t) / 2, cur.spec(les)))
         assert run(ex["after"])["passed"], (lid, run(ex["after"]))
         assert not run(ex["before"])["passed"], lid
+
+
+# ----------------------------------------------------------------------------- v8: three-angle review
+def test_local_review_evaluator_coach_and_breakdown():
+    from coach import analysis
+    a = analysis.analyze(STRONG, "Interview", PROMPT, duration_seconds=40)
+    r = a["review"]
+    ev = r["evaluator"]
+    assert ev["role"] == "Interviewer" and ev["verdict"] == "strong_yes" and ev["verdict_label"] == "Strong yes"
+    assert "40 percent" in ev["follow_up"]                              # asks about their own number
+    whys = {x["why"] for x in ev["landed"]}
+    assert len(whys) == len(ev["landed"]) >= 2                           # varied, specific reasons
+    assert all(x["quote"] in STRONG.replace("…", "") or x["quote"].rstrip("…") in STRONG for x in ev["landed"])
+    assert [p["label"] for p in r["breakdown"]["parts"]] == ["Situation", "Task", "Action", "Result", "Lesson"]
+    assert all(p["status"] == "present" and p["quote"] for p in r["breakdown"]["parts"])
+
+    weak = analysis.analyze(WEAK + ". " + WEAK, "Interview", PROMPT, duration_seconds=30)["review"]
+    assert weak["evaluator"]["verdict"] in ("lean_no", "no") and weak["evaluator"]["doubts"]
+    quotes = [f["quote"] for f in weak["coach"]["fixes"] if f["quote"]]
+    assert len(quotes) == len(set(quotes))                              # never the same sentence twice
+    assert weak["coach"]["do_next"] and weak["coach"]["drill"]["steps"]
+    assert weak["coach"]["stronger_version"] is None and weak["source"] == "local"
+
+
+def test_evaluator_role_follows_the_mode():
+    from coach import analysis
+    roles = {m: analysis.analyze(STRONG, m, "")["review"]["evaluator"]["role"]
+             for m in ("Leadership", "Technical Explanation", "Toastmasters", "FDE / Customer")}
+    assert roles == {"Leadership": "Leadership team", "Technical Explanation": "Your audience",
+                     "Toastmasters": "The audience", "FDE / Customer": "The customer"}
+
+
+def test_mentor_uses_recent_history(client):
+    first = client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT}).json()["analysis"]["review"]
+    assert first["mentor"]["based_on"] == 1 and first["mentor"]["note"] and first["mentor"]["habit"]
+    for _ in range(2):
+        client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT})
+    m = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT}).json()["analysis"]["review"]["mentor"]
+    assert m["based_on"] == 4 and "last 4 takes" in m["pattern"] and m["improving"] and m["habit"]   # includes this take
+
+
+def test_llm_review_merges_and_challenge_hides_rewrite(monkeypatch):
+    from coach import analysis, llm
+    fake = {"scores": {"structure": 70, "clarity": 70, "relevance": 70, "answer_quality": 70},
+            "review": {"evaluator": {"verdict": "lean_yes", "summary": "Solid, but I want your part.",
+                                     "landed": [{"quote": "reduced latency by 40 percent", "why": "Measured."}],
+                                     "doubts": [{"quote": None, "why": "No trade-offs."}],
+                                     "follow_up": "What did your director say?", "to_strong_yes": ["Lead with it."]},
+                       "breakdown": [{"label": "Situation", "status": "present", "quote": "leading the migration",
+                                      "note": "Clear."}],
+                       "coach": {"fixes": [{"quote": "my director disagreed", "problem": "Late point.",
+                                            "fix": "Open with the result."}],
+                                 "do_next": ["Open with the 40%."], "drill": {"title": "Headline", "steps": ["a", "b"]},
+                                 "stronger_version": "I cut latency 40% by proving my plan with data."},
+                       "mentor": {"pattern": "You bury results.", "improving": "Ownership.", "habit": "Lead with results."}}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (json.loads(json.dumps(fake)), "anthropic:test"))
+    r = analysis.analyze(STRONG, "Interview", PROMPT)["review"]
+    assert r["source"] == "ai" and r["evaluator"]["verdict_label"] == "Lean yes"
+    assert r["evaluator"]["follow_up"] == "What did your director say?"
+    assert r["coach"]["stronger_version"].startswith("I cut latency") and r["mentor"]["pattern"] == "You bury results."
+    assert r["breakdown"]["parts"][0]["note"] == "Clear."
+    c = analysis.analyze(STRONG, "Interview", PROMPT, challenge=True)["review"]
+    assert c["coach"]["stronger_version"] is None                      # Challenge Mode never hands over an answer
+
+    bad = {"scores": {}, "review": {"evaluator": {"verdict": "amazing"}, "coach": "nonsense"}}
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (bad, "anthropic:test"))
+    r = analysis.analyze(STRONG, "Interview", PROMPT)["review"]          # malformed AI output → local values kept
+    assert r["evaluator"]["verdict"] in ("strong_yes", "lean_yes", "lean_no", "no") and r["coach"]["fixes"] is not None
+
+
+def test_ai_prompt_carries_role_and_history(monkeypatch):
+    from coach import analysis, llm
+    seen = {}
+
+    def capture(system, user, **k):
+        seen["system"], seen["user"] = system, user
+        return {"scores": {}}, "anthropic:test"
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", capture)
+    hist = [{"overall": 55, "structure": 50, "clarity": 60, "relevance": 60, "answer_quality": 50, "delivery": 60,
+             "analysis": {"structure_map": [{"label": "Result", "status": "missing"}], "metrics": {"filler_rate": 4}}}] * 3
+    analysis.analyze(STRONG, "FDE / Customer", "", history=hist)
+    assert "Evaluator: The customer" in seen["user"] and "Recent history (3 takes" in seen["user"]
+    assert "Result missing in 3" in seen["user"] and '"review"' in seen["system"]

@@ -40,7 +40,7 @@ def model_name(provider: str) -> str:
     if provider == "openai":
         return os.getenv("OPENAI_MODEL", "gpt-5.6")
     if provider == "anthropic":
-        return os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+        return os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
     return "heuristic"
 
 

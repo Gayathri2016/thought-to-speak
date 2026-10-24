@@ -1,5 +1,20 @@
 # Changelog
 
+## v8 — feedback from three angles
+- Every take now gets a review from the people who matter:
+  - **Evaluator** — the interviewer, audience, leadership team or customer (depending on the mode) gives a
+    verdict (e.g. Strong yes / Lean yes / Lean no / Not yet), quotes what landed and what raised a doubt, asks
+    the follow-up question they'd ask next (one click to practise answering it), and says what would earn the
+    top verdict.
+  - **Your answer, part by part** — each framework part with the exact words that did it, or "not in your
+    answer", plus a note when parts came out of order.
+  - **Coach** — top three fixes quoting your words, a game plan for the next take, a 2-minute drill and,
+    with an API key, a stronger version of *your* answer (never in Challenge Mode).
+  - **Mentor** — the pattern across your recent takes, what's genuinely improving, and one habit for the week.
+- Works offline with the built-in coach; with an OpenAI or Anthropic key the AI writes the review, using a
+  summary of your recent history. Malformed AI output falls back to the built-in review, field by field.
+- Default Anthropic model updated to `claude-sonnet-5-5`.
+
 ## v7.1 — The 28-Day Speaking Sprint
 - The daily program has its own identity: renamed to *The 28-Day Speaking Sprint*, with new day titles, a new
   order and week themes (Foundations → Voice & presence → Conversations → Influence), new milestones, and colours

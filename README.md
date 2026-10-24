@@ -53,6 +53,14 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 - The next day unlocks the following morning in your timezone; streaks and weekly milestones keep you going.
 - Program content lives in `content/programs/speaking-sprint-28.json`.
 
+**Feedback from three angles — new in v8**
+- **Evaluator:** the interviewer / audience / customer gives a verdict, quotes what landed and what raised a
+  doubt, and asks the follow-up they'd ask next (one click to practise it).
+- **Part by part:** your answer split into its framework parts, quoting your own words.
+- **Coach:** top three fixes, a plan for the next take, a 2-minute drill, and (with an API key) a stronger
+  version of your own answer.
+- **Mentor:** your pattern across recent takes, what's improving, and one habit for the week.
+
 **Practice**
 - Five scenarios — Interview, Leadership, Technical explanation, Toastmasters, FDE / Customer — or your own prompt.
 - Scores for **structure, clarity, relevance, answer quality and delivery**, plus a framework check.
@@ -137,6 +145,7 @@ Design choices:
 ```
 app.py               FastAPI routes
 coach/analysis.py    heuristic + LLM analysis, Challenge Mode guard
+coach/review.py      evaluator / coach / mentor review and part-by-part breakdown
 coach/audio.py       waveform analysis and voice scores (numpy)
 coach/transcribe.py  Whisper: OpenAI API or local faster-whisper
 coach/metrics.py     fillers, hedges, vague words, WPM

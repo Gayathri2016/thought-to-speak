@@ -397,6 +397,7 @@ function finishAnalysis(a) {
     <div class="sm-item ${esc(x.status)}"><span class="ico" aria-label="${esc(x.status)}">${icon[x.status] || "~"}</span>
       <b>${esc(x.label)}</b><span class="note">${esc(x.note)}</span></div>`).join("");
 
+  renderReview(a);
   $("coachTitle").textContent = a.challenge_mode ? "🧠 Challenge Mode — find the fix yourself" : "💡 Coach";
   $("coachHint").textContent = a.coaching_hint || "";
   $("coachQuestions").innerHTML = li(a.coaching_questions);
@@ -404,6 +405,82 @@ function finishAnalysis(a) {
   $("outlineWrap").classList.toggle("hidden", a.challenge_mode || !outline.length);
   $("outline").innerHTML = li(outline);
   $("nextChallenge").textContent = a.next_challenge || "";
+}
+
+/* ------------------------------------------------------------------ three-angle review (v8) */
+function renderReview(a) {
+  const el = $("reviewCard"), r = a.review;
+  const legacy = ["legacyFeedback", "structureWrap", "coachBox"];
+  if (!r) { el.classList.add("hidden"); legacy.forEach((id) => $(id).classList.remove("hidden")); return; }
+  legacy.forEach((id) => $(id).classList.add("hidden"));
+  const ev = r.evaluator, co = r.coach, me = r.mentor, parts = r.breakdown?.parts || [];
+  const q = (x) => x ? `<q>${esc(x)}</q>` : "";
+  const quoteList = (xs, empty) => xs.length ? `<ul class="rv-quotes">${xs.map((x) =>
+    `<li>${x.quote ? `${q(x.quote)}<br>` : ""}<span>${esc(x.why)}</span></li>`).join("")}</ul>` : `<p class="small muted">${empty}</p>`;
+  const icon = { present: "✓", weak: "~", missing: "✗" };
+  const outline = a.suggested_outline || [];
+  el.classList.remove("hidden");
+  el.innerHTML = `
+    <section class="rv-sec rv-eval v-${esc(ev.verdict)}">
+      <div class="rv-h"><span class="rv-who">🎯 ${esc(ev.role)}</span>
+        <span class="rv-badge">${esc(ev.verdict_label)}</span></div>
+      <p class="small muted rv-qn">${esc(ev.question)}</p>
+      <p class="rv-sum">“${esc(ev.summary)}”</p>
+      <div class="rv-2col">
+        <div><div class="eyebrow">What landed</div>${quoteList(ev.landed, "Nothing stood out yet — the coach's fixes below will change that.")}</div>
+        <div><div class="eyebrow">What raised a doubt</div>${quoteList(ev.doubts, "Nothing — a clean answer.")}</div>
+      </div>
+      ${ev.to_strong_yes?.length ? `<div class="eyebrow">To get to “${esc(ev.verdict === "strong_yes" ? "even better" : (ev.role === "Interviewer" ? "Strong yes" : "the top verdict"))}”</div>
+        <ul class="small">${ev.to_strong_yes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <div class="rv-follow"><div><span class="eyebrow">They'd likely ask next</span><p>${esc(ev.follow_up)}</p></div>
+        <button class="ghost sm" id="rvFollow">🎙️ Answer it</button></div>
+    </section>
+
+    <section class="rv-sec">
+      <div class="rv-h"><span class="rv-who">🧱 Your answer, part by part</span><span class="small muted">${esc(a.framework_name)}</span></div>
+      <div class="rv-parts">${parts.map((p) => `<div class="rv-part ${esc(p.status)}">
+        <span class="ico" aria-label="${esc(p.status)}">${icon[p.status] || "~"}</span><b>${esc(p.label)}</b>
+        <span>${p.quote ? q(p.quote) : `<span class="muted">Not in your answer</span>`}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ""}</span></div>`).join("")}</div>
+      ${r.breakdown?.order_note ? `<p class="small rv-note">↕ ${esc(r.breakdown.order_note)}</p>` : ""}
+    </section>
+
+    <section class="rv-sec rv-coach">
+      <div class="rv-h"><span class="rv-who">🏋️ Coach</span><span class="small muted">${a.challenge_mode ? "Challenge Mode — find the fix yourself" : "before your next take"}</span></div>
+      ${co.fixes?.length ? `<div class="eyebrow">Top fixes</div><ol class="rv-fixes">${co.fixes.map((f) => `<li>
+        ${f.quote ? `<span class="small muted">You said</span> ${q(f.quote)}<br>` : ""}<b>${esc(f.problem)}</b><br><span>→ ${esc(f.fix)}</span></li>`).join("")}</ol>` : ""}
+      ${a.challenge_mode && a.coaching_questions?.length ? `<div class="eyebrow">Ask yourself</div><ul class="small">${a.coaching_questions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${co.do_next?.length ? `<div class="eyebrow">On your next take</div><ul class="rv-next">${co.do_next.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <div class="rv-actions"><button class="primary sm" id="rvRetry">🔁 Retry with these fixes</button></div>
+      ${co.drill ? `<details class="rv-drill"><summary>🎯 2-minute drill: <b>${esc(co.drill.title)}</b></summary>
+        <ol class="small">${co.drill.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></details>` : ""}
+      ${co.stronger_version ? `<details class="rv-drill"><summary>✨ Hear a stronger version of <i>your</i> answer</summary>
+        <p class="rv-strong">${esc(co.stronger_version)}</p>
+        <button class="ghost sm" id="rvHear">▶ Listen</button>
+        <p class="small muted">Same facts, better shape. Don't memorise it — notice what changed, then say it your way.</p></details>`
+        : !a.challenge_mode && outline.length ? `<details class="rv-drill"><summary>🦴 Skeleton built from your own words</summary>
+        <ul class="small">${outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <p class="small muted">Add an API key for a full rewritten version of your answer.</p></details>` : ""}
+    </section>
+
+    <section class="rv-sec rv-mentor">
+      <div class="rv-h"><span class="rv-who">🧭 Mentor</span><span class="small muted">${me.based_on ? `based on your last ${me.based_on} takes` : "the bigger picture"}</span></div>
+      ${me.pattern ? `<p><b>Pattern:</b> ${esc(me.pattern)}</p>` : ""}
+      ${me.improving ? `<p><b>Improving:</b> ${esc(me.improving)}</p>` : ""}
+      <p><b>This week's habit:</b> ${esc(me.habit)}</p>
+      ${me.note ? `<p class="small muted">${esc(me.note)}</p>` : ""}
+    </section>
+    <p class="small muted rv-src">${r.source === "ai" ? "Review written by your AI coach, quoting your own words." : "Review from the built-in coach — add an API key for deeper, AI-written feedback."}</p>`;
+  $("rvFollow").onclick = () => {
+    state.chainId = null; state.takeNo = 1;
+    practiceWith({ mode: a.mode in state.modes ? a.mode : state.mode, prompt: ev.follow_up });
+    $("transcript").value = ""; $("status").textContent = "Follow-up question loaded — hit “Start speaking”.";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  $("rvRetry").onclick = () => {
+    startRetry();
+    if (co.do_next?.length) $("status").textContent = `Focus: ${co.do_next[0]}`;
+  };
+  if ($("rvHear")) $("rvHear").onclick = () => speak(co.stronger_version, 0.95);
 }
 
 function deltaCell(d) {

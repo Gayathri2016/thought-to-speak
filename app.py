@@ -308,8 +308,9 @@ def _analyze(store: UserStore, req: AnalyzeRequest, text: str, voice: dict | Non
     else:
         spec = curriculum.spec(lesson) if lesson else None
         daily = [w["word"] for w in language.daily_words()]
+        history = [h for h in store.recent(12) if h.get("kind") != "read_aloud"][::-1]   # oldest → newest
         result = analysis.analyze(text, mode, req.prompt.strip(), req.challenge_mode, req.duration_seconds, spec,
-                                  voice, words, daily)
+                                  voice, words, daily, history)
         prompt = req.prompt.strip()
     lesson_result = curriculum.evaluate(lesson, result) if lesson else None
     if lesson_result:

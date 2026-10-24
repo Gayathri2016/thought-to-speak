@@ -6,6 +6,7 @@ from . import audio as audio_mod
 from . import language as lang
 from . import llm, metrics
 from . import pronunciation as pron
+from . import review as review_mod
 from .prompts import MODES, normalize_mode
 
 log = logging.getLogger("thought_to_speak")
@@ -312,6 +313,29 @@ Return ONLY a JSON object with exactly these keys:
     "word_upgrades": [{"original": str, "better": str, "why": str}],  // 0-3 vague/weak words → precise ones
     "grammar": [{"original": str, "corrected": str, "issue": str}],   // 0-3 real grammar errors only
     "sentence_tip": str                                               // one tip on sentence structure
+  },
+  "review": {                       // the same take seen from three angles — see REVIEW rules below
+    "evaluator": {
+      "verdict": "strong_yes"|"lean_yes"|"lean_no"|"no",
+      "summary": str,               // 1-2 sentences, first person, in the evaluator's voice
+      "landed": [{"quote": str, "why": str}],   // 1-3: the speaker's exact words that worked, and why
+      "doubts": [{"quote": str|null, "why": str}], // 1-3: exact words that raised a doubt (null quote = something missing)
+      "follow_up": str,             // the question this evaluator would most likely ask next
+      "to_strong_yes": [str]        // 1-2 specific changes that would earn the top verdict
+    },
+    "breakdown": [{"label": str, "status": "present"|"weak"|"missing", "quote": str|null, "note": str}],
+    "order_note": str|null,         // only if the parts came out in a confusing order
+    "coach": {
+      "fixes": [{"quote": str|null, "problem": str, "fix": str}],  // top 3, highest impact first
+      "do_next": [str],             // 2-3 imperative instructions for the very next take
+      "drill": {"title": str, "steps": [str]},   // one 2-4 minute drill for the biggest weakness
+      "stronger_version": str       // see rules; "" in challenge_mode
+    },
+    "mentor": {
+      "pattern": str|null,          // the recurring pattern across recent takes (null if no history)
+      "improving": str|null,        // what is genuinely improving, with evidence
+      "habit": str                  // one habit to practise this week
+    }
   }
 }
 
@@ -329,7 +353,22 @@ sentences, sample phrasing, or rewritten answer anywhere. Coach only with observ
 If challenge_mode is false: suggested_outline may contain 3-5 short skeleton bullets ("Label: idea")
 built only from the speaker's own content — an outline, never a full rewritten answer.
 language: quote the speaker's exact words in "original". Ignore speech-to-text artifacts. In challenge_mode,
-set "better" and "corrected" to "" and describe the issue only, so the speaker finds the fix."""
+set "better" and "corrected" to "" and describe the issue only, so the speaker finds the fix.
+
+REVIEW rules — the review is the heart of the feedback:
+- evaluator: you ARE the evaluator named in the request (an interviewer, the audience, a leadership team or a
+  customer). Speak in first person as that person, honestly and specifically: would this move them, and why.
+  Use "strong_yes" only for an answer you would genuinely remember. Quotes must be the speaker's exact words
+  (short excerpts, <= 25 words). follow_up must be the natural next question that person would ask.
+- breakdown: one entry per framework label, in framework order; "quote" is the speaker's words that did that
+  part (null if missing); "note" says how well it did it.
+- coach: you are their speaking coach preparing them for the real thing. fixes quote their words and say
+  exactly what to change; do_next is what to do differently on the very next take.
+  stronger_version: when challenge_mode is false, rewrite THEIR answer at its best — keep their facts, story
+  and voice, invent nothing, about the target length. When challenge_mode is true, return "" and give no
+  sample wording anywhere.
+- mentor: you are their long-term mentor. Use the recent-history summary to name the pattern, what is genuinely
+  improving, and one habit for this week. If there is no history, set pattern and improving to null."""
 
 
 def _voice_line(v):
@@ -341,17 +380,29 @@ def _voice_line(v):
             f"{p.get('range_semitones')} semitones ({p.get('label')}), volume trails off: {v['volume']['trails_off']}.")
 
 
-def _llm_feedback(text, mode, prompt, challenge, m, spec, voice=None):
+def _history_line(digest: dict) -> str:
+    if not digest.get("count"):
+        return "Recent history: none (this is one of their first takes)."
+    miss = ", ".join(f"{lab} missing in {k}" for lab, k in digest["recurring_missing"]) or "none"
+    trend = ", ".join(f"{d} {v:+d}" for d, v in (digest.get("trend") or {}).items()) or "not enough takes"
+    return (f"Recent history ({digest['count']} takes, oldest→newest overall {digest['overall']}): averages "
+            f"{digest['avgs']}; recurring gaps: {miss}; filler rate avg {digest['avg_filler_rate']}/100 words; "
+            f"hedges avg {digest['avg_hedges']}; trend early→late: {trend}.")
+
+
+def _llm_feedback(text, mode, prompt, challenge, m, spec, voice=None, digest=None):
+    role = review_mod.ROLES.get(mode, review_mod.ROLES["Interview"])
     user = (
-        f"Mode: {mode}\nGoal: {spec['goal']}\nRubric: {spec['rubric']}\n"
+        f"Mode: {mode}\nEvaluator: {role['role']} — {role['question']}\n"
+        f"Goal: {spec['goal']}\nRubric: {spec['rubric']}\n"
         f"Framework ({spec['name']}) labels: {spec['framework']}\nTarget length: {spec['target_seconds'][0]}-"
         f"{spec['target_seconds'][1]} seconds\nchallenge_mode: {str(challenge).lower()}\n"
         f"Prompt the speaker was answering: {prompt or '(free practice — no prompt)'}\n"
         f"Measured: {m['word_count']} words, ~{m['seconds']}s, {m['wpm']} wpm, "
         f"{m['filler_count']} fillers, {m['hedge_count']} hedges, {m.get('vague_count', 0)} vague words\n"
-        f"{_voice_line(voice)}\n\nTranscript:\n\"\"\"{text}\"\"\""
+        f"{_voice_line(voice)}\n{_history_line(digest or {})}\n\nTranscript:\n\"\"\"{text}\"\"\""
     )
-    return llm.complete_json(SYSTEM_PROMPT, user)
+    return llm.complete_json(SYSTEM_PROMPT, user, max_tokens=4000)
 
 
 def _str_list(v, limit):
@@ -425,7 +476,8 @@ def analyze_read_aloud(text: str, target: str, words: list[dict] | None = None, 
 
 def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
             duration_seconds: float | None = None, spec: dict | None = None, voice: dict | None = None,
-            words: list[dict] | None = None, daily_words: list[str] | None = None) -> dict:
+            words: list[dict] | None = None, daily_words: list[str] | None = None,
+            history: list[dict] | None = None) -> dict:
     """spec overrides the mode's framework/rubric/target (used by lessons).
     voice = acoustic report from coach.audio.analyze (real recording) — drives delivery scoring."""
     mode = normalize_mode(mode)
@@ -447,10 +499,13 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     structure_map = h["structure_map"]
     language = language_report(text, words, challenge, daily_words)
     provider, warning = "local:heuristic", None
+    digest = review_mod.history_digest(history or [])
+    llm_review = None
 
     if llm.active_provider() != "local":
         try:
-            data, provider = _llm_feedback(text, mode, prompt, challenge, m, spec, voice)
+            data, provider = _llm_feedback(text, mode, prompt, challenge, m, spec, voice, digest)
+            llm_review = data.get("review") if isinstance(data.get("review"), dict) else None
             for d in ("structure", "clarity", "relevance", "answer_quality"):
                 v = _clamp((data.get("scores") or {}).get(d))
                 if v is not None:
@@ -488,6 +543,9 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     if challenge:
         fb["suggested_outline"] = []  # hard guarantee: Challenge Mode never hands over an answer
 
+    rv = review_mod.local_review(text, mode, spec, m, scores, FRAMEWORK_CUES, history)
+    rv = review_mod.merge_llm_review(rv, llm_review, challenge, mode)
+
     overall = overall_from(scores)
     return {
         "overall_score": overall,
@@ -502,6 +560,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         "challenge_mode": challenge,
         "voice": ({**voice, "scores": voice_scores} if voice else None),
         "language": language,
+        "review": rv,
         "provider": provider,
         "warning": warning,
         # legacy keys kept for older history entries / clients
