@@ -51,6 +51,44 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+-- v8.4: analysis jobs, usage accounting, cached comparison narratives
+CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  idempotency_key TEXT,
+  request_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+  request_json TEXT NOT NULL,
+  audio_tmp TEXT,
+  attempt_id TEXT,
+  result_json TEXT,
+  error TEXT,
+  error_code TEXT,
+  tries INTEGER NOT NULL DEFAULT 0,
+  quota_day TEXT,
+  quota_state TEXT CHECK (quota_state IN ('reserved', 'consumed', 'refunded') OR quota_state IS NULL),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idem ON jobs(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id, created_at);
+CREATE TABLE IF NOT EXISTS usage (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  reserved INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
+CREATE TABLE IF NOT EXISTS comparisons (
+  base_id TEXT NOT NULL,
+  current_id TEXT NOT NULL,
+  user_id TEXT,
+  narrative_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (base_id, current_id)
+);
 """
 
 
@@ -63,12 +101,13 @@ class Store:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
+            c.execute("PRAGMA journal_mode=WAL")     # readers don't block the analysis worker's writes
             c.executescript(SCHEMA)
             self._migrate(c)
         if legacy_json:
             self._import_legacy(Path(legacy_json))
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     @classmethod
     def _migrate(cls, c):
@@ -114,7 +153,8 @@ class Store:
 
     @contextmanager
     def _conn(self):
-        c = sqlite3.connect(self.db_path)
+        # timeout: wait for a concurrent writer (worker threads) instead of failing with "database is locked"
+        c = sqlite3.connect(self.db_path, timeout=30)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA foreign_keys = ON")
         try:
@@ -160,6 +200,8 @@ class Store:
 
     def delete(self, attempt_id: str, user_id=None) -> bool:
         with _lock, self._conn() as c:
+            c.execute("DELETE FROM comparisons WHERE (base_id=? OR current_id=?) AND user_id IS ?",
+                      (attempt_id, attempt_id, user_id))
             return c.execute("DELETE FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).rowcount > 0
 
     # ---------- reads ----------
@@ -277,7 +319,12 @@ class Store:
         with _lock, self._conn() as c:
             audio = [r[0] for r in c.execute("SELECT audio_path FROM attempts WHERE user_id=? AND audio_path IS NOT NULL",
                                              (user_id,))]
+            audio += [r[0] for r in c.execute("SELECT audio_tmp FROM jobs WHERE user_id=? AND audio_tmp IS NOT NULL",
+                                              (user_id,))]
             c.execute("DELETE FROM attempts WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM jobs WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM usage WHERE user_id=?", (user_id,))
+            c.execute("DELETE FROM comparisons WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             c.execute("DELETE FROM meta WHERE key LIKE ?", (f"u:{user_id}:%",))
             c.execute("DELETE FROM users WHERE id=?", (user_id,))
@@ -297,6 +344,18 @@ class Store:
     def delete_session(self, token_hash: str):
         with _lock, self._conn() as c:
             c.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+
+    # ---------- cached comparison narratives ----------
+    def get_comparison(self, base_id: str, current_id: str, user_id=None) -> dict | None:
+        with self._conn() as c:
+            r = c.execute("SELECT narrative_json FROM comparisons WHERE base_id=? AND current_id=? AND user_id IS ?",
+                          (base_id, current_id, user_id)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def put_comparison(self, base_id: str, current_id: str, narrative: dict, user_id=None):
+        with _lock, self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO comparisons VALUES (?,?,?,?,?)",
+                      (base_id, current_id, user_id, json.dumps(narrative), _now()))
 
     def for_user(self, user_id: str) -> "UserStore":
         return UserStore(self, user_id)
@@ -368,6 +427,12 @@ class UserStore:
 
     def count_since(self, iso_utc):
         return self._s.count_since(iso_utc, self.user_id)
+
+    def get_comparison(self, base_id, current_id):
+        return self._s.get_comparison(base_id, current_id, self.user_id)
+
+    def put_comparison(self, base_id, current_id, narrative):
+        return self._s.put_comparison(base_id, current_id, narrative, self.user_id)
 
     def meta_get(self, key):
         return self._s.meta_get(f"u:{self.user_id}:{key}")

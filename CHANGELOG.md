@@ -1,5 +1,14 @@
 # Changelog
 
+## v8.4 — reliable analysis and usage accounting
+- Takes are processed as persistent jobs (queued → running → completed/failed) by an in-process worker pool;
+  the page recovers a pending analysis after a refresh. Jobs interrupted by a restart are re-queued.
+- Per-take idempotency keys: no duplicate takes or AI calls from double clicks, retries or refreshes.
+- Daily quota is reserved atomically before processing (including unsaved analyses); failed jobs are refunded.
+- Uploads are read with a hard size limit; the decoded recording's duration is validated (1 s – 10 min).
+- Audio goes to a temporary folder and is moved into place only when the take is saved; stale temp files are swept.
+- Comparison narratives are cached per pair of takes.
+
 ## v8.3 — focused, evidenced feedback
 - Results open on one strength, one priority fix and one retry instruction; the full review, voice, language and
   measurements are in expandable sections.

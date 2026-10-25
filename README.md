@@ -156,6 +156,9 @@ app.py               FastAPI routes
 coach/analysis.py    heuristic + LLM analysis, Challenge Mode guard
 coach/review.py      evaluator / coach / mentor review and part-by-part breakdown
 coach/corrections.py sentence corrections: false starts, run-ons, fillers, grammar
+coach/service.py     analysis orchestration: validate → transcribe → measure → score → save (audio lifecycle)
+coach/jobs.py        persistent jobs, atomic quota reservation, idempotency, worker pool, restart recovery
+coach/schemas.py     typed request schemas
 coach/scoring.py     scoring provenance (versions, rubric fingerprint, transcript source) + compatibility rules
 scripts/eval_scoring.py  scoring benchmark (tests/benchmark/)
 coach/audio.py       waveform analysis and voice scores (numpy)
@@ -195,6 +198,36 @@ python scripts/eval_scoring.py                    # built-in scorer vs. saved ba
 python scripts/eval_scoring.py --update-baseline  # after an intentional change — bump HEURISTIC_VERSION first
 RUN_LIVE_EVAL=1 pytest -m live                    # optional: evaluate your configured AI provider (API cost)
 ```
+
+## Reliable analysis
+
+Each take is saved as an **analysis job** before any expensive work starts:
+
+1. The browser submits the take with an **idempotency key** (one per take). Re-clicking, a network retry or a
+   refresh can't create a second take or a second AI call — the same key returns the same job.
+2. The server validates it (length, lesson, upload size, real audio duration) and, in one database transaction,
+   creates the job and **reserves one unit of your daily quota** (including "analyze without saving").
+3. A background worker processes it: queued → running → completed / failed. Refresh the page at any time —
+   the app picks up the job and shows the result when it's ready.
+4. Completed jobs consume the quota unit; failed jobs refund it.
+
+| Situation | What happens |
+|---|---|
+| Too short, unknown lesson, locked day, upload too big/long | Rejected immediately — no job, no quota used |
+| Whisper hears nothing / unreadable audio | Job fails with the reason; quota refunded; not retried |
+| AI or Whisper times out | Falls back to built-in analysis inside the job (the take still completes) |
+| App restarts mid-analysis | Job is re-queued on start-up (up to `JOB_MAX_TRIES`, default 3), then failed + refunded |
+| Unexpected error | Job fails, quota refunded, you can submit again |
+
+Limits worth knowing: workers run inside the app process, so run **one** uvicorn worker process. Processing is
+*at-least-once*: if the process dies during an AI call, that call may be repeated after restart (bounded by
+`JOB_MAX_TRIES`). Temporary audio lives in `data/tmp` and is moved to `data/audio` only when a take is saved;
+unreferenced temp files are deleted after an hour. Saved recordings are never deleted automatically.
+Comparison narratives are generated once per pair of takes and cached.
+
+API: `POST /api/jobs` (JSON) or `POST /api/jobs/audio` (multipart) with an `Idempotency-Key` header → `202`
+with the job; poll `GET /api/jobs/{id}`; `GET /api/jobs?active=true`; `GET /api/usage`. The older
+`POST /api/analyze` and `/api/analyze-audio` still work and wait for the result.
 
 ## Tests
 

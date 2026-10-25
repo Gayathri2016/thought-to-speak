@@ -57,6 +57,34 @@ Decisions
 - Pronunciation copy reworded: "words recognised", "likely sound swap", explicitly word-level not phoneme-level.
 
 Verification: 60 passed, 1 skipped. UI checked at 1280px and 390px (focus card, ▶ chips, collapsed sections).
-## Phase 3 — Reliable analysis & usage accounting ⏳
+## Phase 3 — Reliable analysis & usage accounting ✅
+**What:** submissions are persisted as jobs before processing; quota is reserved atomically; duplicates are
+prevented; interrupted work recovers on restart; audio has an explicit temp → final lifecycle.
+
+Decisions
+- Worker design: in-process thread pool (`ANALYSIS_WORKERS`, default 2) + jobs in SQLite (`coach/jobs.py`).
+  Smallest reliable option for one-process deployments on SQLite; no Redis/Celery. Requires a single uvicorn
+  process. SQLite in WAL mode with a 30 s busy timeout.
+- Schema 3 (additive): `jobs` (status CHECK, request JSON + hash, temp audio name, result JSON, error code, tries,
+  quota day/state), `usage` (user, UTC day, reserved), `comparisons` (cached narratives). Unique
+  `(user_id, idempotency_key)`.
+- Atomicity: `BEGIN IMMEDIATE` around idempotency lookup + quota check + usage increment + job insert.
+  Claim = `UPDATE … WHERE status='queued'`; refund happens in the same transaction that marks a job failed.
+- Policies: validation errors → 4xx before any job (no quota); processing input errors → failed + refunded, not
+  retried; transient SQLite errors → retried up to `JOB_MAX_TRIES`; unexpected errors → failed + refunded;
+  restart recovery re-queues `running` jobs (tries < max) else fails + refunds. AI/Whisper timeouts fall back to
+  local analysis inside the job. At-least-once processing: a provider call can repeat after a crash.
+- `coach/service.py` now owns orchestration (moved out of `app.py`); `coach/schemas.py` holds request models.
+- Audio: bounded chunked upload read (413 past `MAX_AUDIO_BYTES`), decoded duration 1 s–`MAX_AUDIO_SECONDS`;
+  written to `data/tmp/<job>.wav` atomically (`.part` + rename); `os.replace` into `data/audio/<uuid>.wav` when
+  saved; deleted for save=false and failures; sweep deletes unreferenced temp files older than
+  `TMP_RETENTION_SECONDS`. Saved recordings are never auto-deleted (no destructive retention by default).
+- Legacy `/api/analyze` + `/api/analyze-audio` = submit + wait (`JOB_WAIT_SECONDS`), returning 202 + job on timeout.
+  Frontend uses `/api/jobs*`, one idempotency key per take (new key after an edit → 409), polls with backoff, and
+  resumes a pending job from localStorage or `GET /api/jobs?active=true` after reload.
+- Comparison narratives cached in `comparisons`; AI fallback narratives are not cached.
+
+Verification: 73 passed, 1 skipped (×5 runs, no flakes). Browser: one POST per take with key; reload recovered
+a queued job and rendered it.
 ## Phase 4 — Maintainable boundaries ⏳
 ## Phase 5 — Adaptive learning ⏳

@@ -21,6 +21,10 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 from coach import analysis, auth, insights, llm, transcribe  # noqa: E402  (after load_dotenv)
+from coach import service as svc_mod  # noqa: E402
+from coach.jobs import IdempotencyConflict, JobRunner, QuotaExceeded, public_job  # noqa: E402
+from coach.schemas import AnalyzeRequest, DeleteAccountRequest, LoginRequest, SignupRequest  # noqa: E402
+from coach.service import AnalysisService, InputError  # noqa: E402
 from coach import audio as audio_mod  # noqa: E402
 from coach import language, pronunciation  # noqa: E402
 from coach.prompts import MODES, normalize_mode, public_modes, random_prompt  # noqa: E402
@@ -29,12 +33,20 @@ from coach.curriculum import Curriculum  # noqa: E402
 
 DB_PATH = Path(os.getenv("TTS_DB_PATH", BASE_DIR / "data" / "thought_to_speak.db"))
 AUDIO_DIR = Path(os.getenv("TTS_AUDIO_DIR", DB_PATH.parent / "audio"))
+TMP_DIR = Path(os.getenv("TTS_TMP_DIR", DB_PATH.parent / "tmp"))
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 store = Store(DB_PATH, legacy_json=BASE_DIR / "sessions.json")
 curriculum = Curriculum(BASE_DIR / "content" / "journeys")
+service = AnalysisService(curriculum, AUDIO_DIR, TMP_DIR)
+runner = JobRunner(store, service)
 
-app = FastAPI(title="Thought → Speak", version="6.0")
+app = FastAPI(title="Thought → Speak", version="8.4")
+
+
+@app.on_event("startup")
+def _start_worker():
+    runner.start()       # recover interrupted jobs and start the analysis workers (also started lazily)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
@@ -46,37 +58,6 @@ async def revalidate_app_files(request: Request, call_next):
     if request.url.path == "/" or request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
-
-MAX_TRANSCRIPT_CHARS = 8000
-
-
-class AnalyzeRequest(BaseModel):
-    transcript: str = Field(..., max_length=MAX_TRANSCRIPT_CHARS)
-    mode: str = "Interview"
-    prompt: str = Field("", max_length=1000)
-    challenge_mode: bool = False
-    duration_seconds: float | None = Field(None, ge=0, le=3600)
-    chain_id: str | None = None   # set when this is a retry of an earlier attempt
-    save: bool = True
-    kind: str = Field("free", pattern="^(free|lesson|warmup|review|read_aloud)$")
-    lesson_id: str | None = None
-    target_text: str | None = Field(None, max_length=600)   # read-aloud drills: the sentence to read
-
-
-class SignupRequest(BaseModel):
-    email: str = Field(..., max_length=254)
-    password: str = Field(..., max_length=256)
-    name: str | None = Field(None, max_length=80)
-
-
-class LoginRequest(BaseModel):
-    email: str = Field(..., max_length=254)
-    password: str = Field(..., max_length=256)
-
-
-class DeleteAccountRequest(BaseModel):
-    password: str = Field("", max_length=256)
-
 
 # ----------------------------------------------------------------------------- accounts
 def current_user(request: Request) -> dict:
@@ -116,15 +97,6 @@ def user_now(request: Request) -> datetime:
         except (ZoneInfoNotFoundError, ValueError):
             pass
     return datetime.now().astimezone()
-
-
-def _check_quota(us: UserStore):
-    limit = auth.daily_limit()
-    if not limit:
-        return
-    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    if us.count_since(day_start.isoformat(timespec="seconds")) >= limit:
-        raise HTTPException(429, f"You've reached today's limit of {limit} takes. It resets at midnight UTC.")
 
 
 @app.get("/api/auth/me")
@@ -193,6 +165,7 @@ def delete_account(req: DeleteAccountRequest, request: Request, response: Respon
             raise HTTPException(403, "Password is incorrect.")
     for name in store.delete_user(user["id"]):
         (AUDIO_DIR / Path(name).name).unlink(missing_ok=True)
+        (TMP_DIR / Path(name).name).unlink(missing_ok=True)
     response.delete_cookie(auth.COOKIE, path="/")
     return {"ok": True}
 
@@ -216,54 +189,119 @@ def get_prompt(mode: str = "Interview", exclude: str | None = None):
     return {"mode": m, "prompt": random_prompt(m, exclude)}
 
 
+# ----------------------------------------------------------------------------- analysis (jobs)
+ERROR_STATUS = {"invalid_input": 400, "too_short": 400, "bad_audio": 400, "locked": 403, "unknown_lesson": 404,
+                "too_large": 413, "too_long": 413, "internal": 500, "interrupted": 500}
+JOB_WAIT_SECONDS = float(os.getenv("JOB_WAIT_SECONDS", 180))
+
+
+async def _read_bounded(upload: UploadFile, limit: int) -> bytes:
+    """Read an upload in chunks and stop as soon as it exceeds the limit (never buffers an oversized file)."""
+    chunks, size = [], 0
+    while True:
+        chunk = await upload.read(256 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(413, f"Recording too large (max {limit // (1024 * 1024)} MB).")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _parse_payload(payload: str) -> AnalyzeRequest:
+    try:
+        return AnalyzeRequest(**{"transcript": "", **json.loads(payload)})
+    except (ValidationError, json.JSONDecodeError, TypeError) as e:
+        raise HTTPException(422, f"Bad payload: {e}")
+
+
+def _submit(us: UserStore, req: AnalyzeRequest, request: Request, audio=None, audio_bytes=None) -> tuple[dict, bool]:
+    now = user_now(request)
+    key = request.headers.get("idempotency-key") or req.idempotency_key
+    if key and not (8 <= len(key) <= 80):
+        raise HTTPException(422, "Idempotency-Key must be 8–80 characters.")
+    try:
+        service.validate(us, req, now, has_audio=audio is not None)
+        return runner.submit(us, req, now, auth.daily_limit(), audio=audio, audio_bytes=audio_bytes, key=key)
+    except InputError as e:
+        raise HTTPException(e.status, e.message)
+    except QuotaExceeded as e:
+        raise HTTPException(429, str(e))
+    except IdempotencyConflict as e:
+        raise HTTPException(409, str(e))
+
+
+async def _decode_audio_upload(audio: UploadFile):
+    data = await _read_bounded(audio, svc_mod.MAX_AUDIO_BYTES)
+    try:
+        x = await run_in_threadpool(service.decode_upload, data)
+    except InputError as e:
+        raise HTTPException(e.status, e.message)
+    return x, data
+
+
+def _finish(job: dict):
+    """Synchronous endpoints: return the analysis, an HTTP error for a failed job, or 202 if still running."""
+    if job["status"] == "completed":
+        return json.loads(job["result_json"])
+    if job["status"] == "failed":
+        raise HTTPException(ERROR_STATUS.get(job.get("error_code"), 500), job.get("error") or "Analysis failed")
+    return JSONResponse(public_job(job), status_code=202)
+
+
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest, request: Request, us: UserStore = Depends(user_store)):
-    _check_quota(us)
-    _check_program_gate(us, req, user_now(request))
-    return _analyze(us, req, req.transcript.strip(), now=user_now(request))
+async def analyze(req: AnalyzeRequest, request: Request, us: UserStore = Depends(user_store)):
+    """Analyze a typed / browser transcript and wait for the result (kept for API compatibility)."""
+    job, _ = _submit(us, req, request)
+    return _finish(await run_in_threadpool(runner.wait, job["id"], JOB_WAIT_SECONDS))
 
 
 @app.post("/api/analyze-audio")
 async def analyze_audio(request: Request, audio: UploadFile = File(...), payload: str = Form("{}"),
                         us: UserStore = Depends(user_store)):
-    """Real-audio path: the recorded take is analyzed acoustically (pauses, pace, pitch, volume) and,
-    when Whisper is available, re-transcribed verbatim with word timestamps."""
-    try:
-        req = AnalyzeRequest(**{"transcript": "", **json.loads(payload)})
-    except (ValidationError, json.JSONDecodeError) as e:
-        raise HTTPException(422, f"Bad payload: {e}")
-    _check_quota(us)
-    now = user_now(request)
-    _check_program_gate(us, req, now)
-    data = await audio.read()
-    if len(data) > MAX_AUDIO_BYTES:
-        raise HTTPException(413, "Recording too large (max 25 MB).")
-    try:
-        x = await run_in_threadpool(audio_mod.load_audio, data)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    name = f"{uuid.uuid4()}.wav"
-    path = AUDIO_DIR / name
-    path.write_bytes(audio_mod.to_wav_bytes(x))
+    """Real-audio path, waiting for the result: acoustic analysis plus Whisper re-transcription when available."""
+    req = _parse_payload(payload)
+    x, data = await _decode_audio_upload(audio)
+    job, _ = _submit(us, req, request, audio=x, audio_bytes=data)
+    return _finish(await run_in_threadpool(runner.wait, job["id"], JOB_WAIT_SECONDS))
 
-    tr = await run_in_threadpool(transcribe.transcribe, str(path))
-    words, source, warn = None, "browser speech-to-text", None
-    text = req.transcript.strip()
-    if tr and tr.get("text"):
-        text, words, source = tr["text"], tr.get("words") or None, tr["source"]
-    elif tr and tr.get("error"):
-        warn = tr["error"] + " — used the browser transcript instead."
-    try:
-        voice = await run_in_threadpool(audio_mod.analyze, x, words, len(text.split()))
-    except ValueError as e:
-        path.unlink(missing_ok=True)
-        raise HTTPException(400, str(e))
-    voice["transcript_source"] = source
-    voice["browser_transcript"] = req.transcript.strip() if words else None
-    out = await run_in_threadpool(_analyze, us, req, text, voice, name, words, now)
-    if warn:
-        out["analysis"]["warning"] = " ".join(filter(None, [out["analysis"].get("warning"), warn]))
-    return out
+
+@app.post("/api/jobs", status_code=202)
+def create_job(req: AnalyzeRequest, request: Request, us: UserStore = Depends(user_store)):
+    """Queue an analysis and return immediately. Poll GET /api/jobs/{id}. Safe to retry with the same key."""
+    job, created = _submit(us, req, request)
+    return JSONResponse(public_job(job), status_code=202 if created else 200)
+
+
+@app.post("/api/jobs/audio", status_code=202)
+async def create_audio_job(request: Request, audio: UploadFile = File(...), payload: str = Form("{}"),
+                           us: UserStore = Depends(user_store)):
+    req = _parse_payload(payload)
+    x, data = await _decode_audio_upload(audio)
+    job, created = _submit(us, req, request, audio=x, audio_bytes=data)
+    return JSONResponse(public_job(job), status_code=202 if created else 200)
+
+
+@app.get("/api/jobs")
+def list_jobs(active: bool = False, us: UserStore = Depends(user_store)):
+    return [public_job(j) for j in runner.jobs.list_for_user(us.user_id, active_only=active)]
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str, us: UserStore = Depends(user_store)):
+    job = runner.jobs.get(job_id, us.user_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return public_job(job)
+
+
+@app.get("/api/usage")
+def usage(us: UserStore = Depends(user_store)):
+    limit = auth.daily_limit()
+    used = runner.jobs.usage(us.user_id)
+    return {"used": used, "limit": limit or None, "remaining": max(0, limit - used) if limit else None,
+            "resets": "midnight UTC"}
 
 
 @app.get("/api/audio/{attempt_id}")
@@ -275,69 +313,6 @@ def get_audio(attempt_id: str, us: UserStore = Depends(user_store)):
     if not path.exists():
         raise HTTPException(404, "Audio file missing")
     return FileResponse(path, media_type="audio/wav")
-
-
-def _check_program_gate(us: UserStore, req: AnalyzeRequest, now: datetime):
-    lesson = curriculum.get(req.lesson_id) if req.lesson_id else None
-    msg = curriculum.program_gate(us, lesson, now) if lesson else None
-    if msg:
-        raise HTTPException(403, msg)
-
-
-def _analyze(store: UserStore, req: AnalyzeRequest, text: str, voice: dict | None = None, audio_name: str | None = None,
-             words: list[dict] | None = None, now: datetime | None = None):
-    if len(text.split()) < (1 if req.kind == "read_aloud" or req.target_text else 3):
-        if audio_name:
-            (AUDIO_DIR / audio_name).unlink(missing_ok=True)
-        raise HTTPException(400, "Speak or paste a response of at least a few words first.")
-    mode = normalize_mode(req.mode)
-    lesson = curriculum.get(req.lesson_id) if req.lesson_id else None
-    if req.lesson_id and not lesson:
-        raise HTTPException(404, "Unknown lesson")
-    kind = "lesson" if lesson else req.kind
-    if lesson:
-        mode = lesson["exercise"]["mode"]
-    read_aloud = curriculum.is_read_aloud(lesson) or req.kind == "read_aloud"
-    if read_aloud:
-        target = (req.target_text or "").strip() or (curriculum.read_aloud_texts(lesson)[0] if lesson else "")
-        if not target:
-            raise HTTPException(400, "A read-aloud drill needs the sentence to read (target_text).")
-        result = analysis.analyze_read_aloud(text, target, words, voice)
-        mode = "Read aloud"
-        prompt = target
-    else:
-        spec = curriculum.spec(lesson) if lesson else None
-        daily = [w["word"] for w in language.daily_words()]
-        history = [h for h in store.recent(12) if h.get("kind") != "read_aloud"][::-1]   # oldest → newest
-        result = analysis.analyze(text, mode, req.prompt.strip(), req.challenge_mode, req.duration_seconds, spec,
-                                  voice, words, daily, history)
-        prompt = req.prompt.strip()
-    lesson_result = curriculum.evaluate(lesson, result) if lesson else None
-    if lesson_result:
-        result["lesson_result"] = lesson_result
-    if not req.save:
-        return {"analysis": result, "lesson_result": lesson_result}
-
-    pid = lesson.get("program_id") if lesson else None
-    if pid and not store.meta_get(curriculum.program_key(pid)):
-        curriculum.enroll(store, pid, now or datetime.now().astimezone())   # practising Day 1 starts the program
-    chain_id = req.chain_id if req.chain_id and store.chain(req.chain_id) else None
-    rec = store.add_attempt(mode=mode, prompt=prompt, transcript=text,
-                            challenge_mode=req.challenge_mode, duration_seconds=req.duration_seconds,
-                            analysis=result, chain_id=chain_id, kind=kind,
-                            lesson_id=lesson["id"] if lesson else None,
-                            lesson_passed=lesson_result["passed"] if lesson_result else None,
-                            audio_path=audio_name)
-    out = {"attempt": rec, "analysis": result, "comparison": None, "lesson_result": lesson_result}
-    if pid:
-        st = curriculum.program_state(store, pid, now or datetime.now().astimezone())
-        out["program"] = {k: st[k] for k in ("id", "title", "done", "total", "complete", "current_day",
-                                             "today_status", "streak", "milestones")}
-    if rec["attempt_no"] > 1:
-        chain = store.chain(rec["chain_id"])
-        out["comparison"] = insights.compare(chain[-2], rec)
-        out["first_vs_latest"] = insights.compare(chain[0], rec) if len(chain) > 2 else None
-    return out
 
 
 @app.get("/api/journey")
@@ -422,7 +397,7 @@ def compare(base_id: str, current_id: str, us: UserStore = Depends(user_store)):
     a, b = us.get(base_id), us.get(current_id)
     if not a or not b:
         raise HTTPException(404, "Attempt not found")
-    return insights.compare(a, b)
+    return insights.compare(a, b, cache=us)
 
 
 @app.get("/api/history")

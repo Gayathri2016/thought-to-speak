@@ -746,7 +746,7 @@ def test_migration_backfills_provenance_without_touching_data(tmp_path, with_use
     assert rows["a2"]["scoring_version"] == "heuristic-legacy" and "whisper" in rows["a2"]["transcript_source"]
     assert rows["a1"]["transcript_source"].startswith("text")
     assert rows["a3"]["scoring_version"] == "pronunciation-legacy"
-    assert json.loads(db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]) == 2
+    assert json.loads(db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]) == Store.SCHEMA_VERSION
 
 
 def test_new_takes_store_provenance(client):
@@ -933,3 +933,236 @@ def test_near_quotes_never_flip_meaning_or_ownership():
     assert evidence.check("we did not reduce latency by 40 percent", t) is None
     assert evidence.check("we reduced latency by forty percent", t)["quote"] == "we reduced latency by 40 percent"
     assert evidence.check("my director disagred with my plan", t)["quote"].startswith("My director disagreed")
+
+
+# ----------------------------------------------------------------------------- v8.4: jobs, idempotency, quota
+def _poll(c, job_id, timeout=20):
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        j = c.get(f"/api/jobs/{job_id}").json()
+        if j["status"] in ("completed", "failed"):
+            return j
+        time.sleep(0.05)
+    raise AssertionError("job did not finish")
+
+
+def _user(app_module, email="ada@example.com"):
+    return app_module.store.for_user(app_module.store.user_by_email(email)["id"])
+
+
+def test_async_job_lifecycle_and_isolation(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    ada, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(ada, "ada@example.com")
+    _signup(bob, "bob@example.com")
+    r = ada.post("/api/jobs", json={"transcript": STRONG, "prompt": PROMPT})
+    assert r.status_code == 202 and r.json()["status"] in ("queued", "running", "completed")
+    jid = r.json()["id"]
+    assert bob.get(f"/api/jobs/{jid}").status_code == 404                 # jobs are per user
+    done = _poll(ada, jid)
+    assert done["status"] == "completed" and done["quota"] == "consumed"
+    assert done["result"]["attempt"]["id"] == done["attempt_id"]
+    assert done["result"]["analysis"]["focus"]["retry"]
+    assert ada.get("/api/jobs", params={"active": True}).json() == []      # nothing pending after a refresh
+    assert [j["id"] for j in ada.get("/api/jobs").json()] == [jid] and bob.get("/api/jobs").json() == []
+    assert ada.get("/api/usage").json()["used"] == 1 and bob.get("/api/usage").json()["used"] == 0
+
+
+def test_idempotency_key_prevents_duplicates(client):
+    h = {"Idempotency-Key": "take-123456"}
+    a = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT}, headers=h).json()
+    b = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT}, headers=h).json()
+    assert a["attempt"]["id"] == b["attempt"]["id"]                       # same take, not a second one
+    assert len(client.get("/api/history").json()) == 1 and client.get("/api/usage").json()["used"] == 1
+    j = client.post("/api/jobs", json={"transcript": STRONG, "prompt": PROMPT, "idempotency_key": "take-abcdefgh"})
+    j2 = client.post("/api/jobs", json={"transcript": STRONG, "prompt": PROMPT, "idempotency_key": "take-abcdefgh"})
+    assert j.status_code == 202 and j2.status_code == 200 and j.json()["id"] == j2.json()["id"]
+    clash = client.post("/api/jobs", json={"transcript": WEAK, "prompt": PROMPT, "idempotency_key": "take-abcdefgh"})
+    assert clash.status_code == 409                                       # same key, different submission
+
+
+def test_concurrent_idempotent_submissions_create_one_job(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime
+    from coach.schemas import AnalyzeRequest
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    req = AnalyzeRequest(transcript=STRONG, prompt=PROMPT, idempotency_key="same-key-0001")
+    with ThreadPoolExecutor(8) as pool:
+        results = list(pool.map(lambda _: app_module.runner.submit(us, req, datetime.now().astimezone(), 50), range(8)))
+    assert len({j["id"] for j, _ in results}) == 1 and sum(created for _, created in results) == 1
+    assert app_module.runner.jobs.usage(us.user_id) == 1
+
+
+def test_quota_is_reserved_atomically_under_concurrency(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime
+    from coach.jobs import QuotaExceeded
+    from coach.schemas import AnalyzeRequest
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+
+    def go(i):
+        try:
+            app_module.runner.submit(us, AnalyzeRequest(transcript=STRONG, idempotency_key=f"key-{i:06d}"),
+                                     datetime.now().astimezone(), 3)
+            return "ok"
+        except QuotaExceeded:
+            return "limit"
+    with ThreadPoolExecutor(10) as pool:
+        out = list(pool.map(go, range(10)))
+    assert out.count("ok") == 3 and out.count("limit") == 7
+    assert app_module.runner.jobs.usage(us.user_id) == 3
+
+
+def test_save_false_uses_quota_and_saves_nothing(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch, DAILY_TAKE_LIMIT="2").app)
+    _signup(c)
+    for _ in range(2):
+        r = c.post("/api/analyze", json={"transcript": STRONG, "save": False})
+        assert r.status_code == 200 and r.json()["attempt"] is None and r.json()["analysis"]["overall_score"]
+    assert c.post("/api/analyze", json={"transcript": STRONG, "save": False}).status_code == 429
+    assert c.get("/api/history").json() == []
+
+
+def test_invalid_input_is_rejected_before_a_job_or_quota(client):
+    assert client.post("/api/jobs", json={"transcript": "hi"}).status_code == 400
+    assert client.post("/api/jobs", json={"transcript": STRONG, "lesson_id": "nope"}).status_code == 404
+    assert client.get("/api/jobs").json() == [] and client.get("/api/usage").json()["used"] == 0
+
+
+def test_failed_jobs_are_refunded_and_reported(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+
+    def boom(*a, **k):
+        raise RuntimeError("bug")
+    monkeypatch.setattr(app_module.service, "process", boom)
+    r = c.post("/api/analyze", json={"transcript": STRONG})
+    assert r.status_code == 500 and "not charged" in r.json()["detail"]
+    j = c.get("/api/jobs").json()[0]
+    assert j["status"] == "failed" and j["error_code"] == "internal" and j["quota"] == "refunded"
+    assert c.get("/api/usage").json()["used"] == 0 and c.get("/api/history").json() == []
+
+
+def test_audio_input_problem_found_while_processing_is_refunded(tmp_path, monkeypatch):
+    from coach import transcribe
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    wav = _speechlike_wav([("q", .3), ("s", 4), ("q", .3)])
+    r = c.post("/api/analyze-audio", files={"audio": ("t.wav", wav, "audio/wav")},
+               data={"payload": json.dumps({"transcript": ""})})               # no words from anywhere
+    assert r.status_code == 400
+    j = c.get("/api/jobs").json()[0]
+    assert j["error_code"] == "too_short" and j["quota"] == "refunded"
+    assert list(app_module.TMP_DIR.iterdir()) == [] and list(app_module.AUDIO_DIR.iterdir()) == []
+
+
+def test_restart_recovers_interrupted_jobs(tmp_path, monkeypatch):
+    from datetime import datetime
+    from coach.jobs import JobRunner, JobStore, MAX_TRIES
+    from coach.schemas import AnalyzeRequest
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    js = JobStore(app_module.store)
+    now = datetime.now().astimezone().isoformat()
+    payload = {**AnalyzeRequest(transcript=STRONG, prompt=PROMPT).model_dump(), "_now": now}
+    j1, _ = js.create(job_id="job-crashed-1", user_id=us.user_id, req=payload, rhash="h1", key=None, audio_tmp=None, limit=0)
+    j2, _ = js.create(job_id="job-crashed-2", user_id=us.user_id, req=payload, rhash="h2", key=None, audio_tmp=None, limit=0)
+    js.claim(j1["id"])                                                    # "running" when the process died
+    js.claim(j2["id"])
+    with app_module.store._conn() as conn:                                # j2 already used all its tries
+        conn.execute("UPDATE jobs SET tries=? WHERE id=?", (MAX_TRIES, j2["id"]))
+    restarted = JobRunner(app_module.store, app_module.service, workers=1)
+    restarted.start()                                                     # = app start-up after a crash
+    done = restarted.wait(j1["id"], 20)
+    assert done["status"] == "completed" and done["tries"] == 2 and done["attempt_id"]
+    failed = js.get(j2["id"])
+    assert failed["status"] == "failed" and failed["error_code"] == "interrupted" and failed["quota_state"] == "refunded"
+    assert js.usage(us.user_id) == 1                                      # 2 reserved, 1 refunded
+    restarted.stop()
+
+
+def test_audio_files_are_finalized_or_cleaned_up(tmp_path, monkeypatch):
+    import os
+    import time
+    from coach import transcribe
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    wav = _speechlike_wav([("q", .3), ("s", 5), ("q", .3)])
+    send = lambda save: c.post("/api/analyze-audio", files={"audio": ("t.wav", wav, "audio/wav")},  # noqa: E731
+                               data={"payload": json.dumps({"transcript": STRONG, "save": save})})
+    assert send(False).status_code == 200
+    assert list(app_module.TMP_DIR.iterdir()) == [] and list(app_module.AUDIO_DIR.iterdir()) == []
+    saved = send(True).json()["attempt"]
+    assert list(app_module.TMP_DIR.iterdir()) == []
+    assert [p.name for p in app_module.AUDIO_DIR.iterdir()] == [saved["audio_path"]]
+    # retention sweep: stale, unreferenced temp files go; saved recordings are never touched
+    stale = app_module.TMP_DIR / "orphan.wav"
+    stale.write_bytes(b"x")
+    old = time.time() - 7200
+    os.utime(stale, (old, old))
+    fresh = app_module.TMP_DIR / "fresh.wav"
+    fresh.write_bytes(b"x")
+    assert app_module.runner.cleanup() == 1
+    assert not stale.exists() and fresh.exists() and (app_module.AUDIO_DIR / saved["audio_path"]).exists()
+
+
+def test_upload_size_and_duration_limits(tmp_path, monkeypatch):
+    from coach import service as svc
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    post = lambda wav: c.post("/api/jobs/audio", files={"audio": ("t.wav", wav, "audio/wav")},  # noqa: E731
+                              data={"payload": json.dumps({"transcript": STRONG})})
+    assert post(_speechlike_wav([("s", 0.5)])).status_code == 400               # < 1 second
+    monkeypatch.setattr(svc, "MAX_AUDIO_SECONDS", 3.0)
+    r = post(_speechlike_wav([("s", 5)]))
+    assert r.status_code == 413 and "minutes" in r.json()["detail"]
+    monkeypatch.setattr(svc, "MAX_AUDIO_BYTES", 1000)
+    assert post(_speechlike_wav([("s", 2)])).status_code == 413               # stops reading past the limit
+    assert c.get("/api/jobs").json() == [] and c.get("/api/usage").json()["used"] == 0
+    assert list(app_module.TMP_DIR.iterdir()) == []
+
+
+def test_comparison_narrative_is_generated_once(client, monkeypatch):
+    from coach import llm
+    calls = {"n": 0}
+
+    def fake(system, user, **k):
+        if system.startswith("You compare"):
+            calls["n"] += 1
+            return {"summary": "Clearer.", "what_improved": ["Result first."], "still_to_work_on": ["Pace."]}, "x"
+        return {"scores": {}}, "anthropic:test"
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", fake)
+    a = client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT}).json()["attempt"]
+    b = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT, "chain_id": a["chain_id"]}).json()
+    assert b["comparison"]["summary"] == "Clearer." and calls["n"] == 1
+    for _ in range(3):
+        again = client.get("/api/compare", params={"base_id": a["id"], "current_id": b["attempt"]["id"]}).json()
+        assert again["summary"] == "Clearer."
+    assert calls["n"] == 1                                                # cached, not regenerated
+
+
+def test_delete_account_removes_jobs_and_usage(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    uid = _signup(c)["id"]
+    c.post("/api/analyze", json={"transcript": STRONG})
+    c.request("DELETE", "/api/auth/account", json={"password": "correct horse"})
+    with app_module.store._conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM jobs WHERE user_id=?", (uid,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM usage WHERE user_id=?", (uid,)).fetchone()[0] == 0

@@ -158,6 +158,7 @@ function resetTake() {
   $("transcript").value = ""; $("interim").classList.add("hidden");
   state.audioChunks = []; $("audioLen").textContent = "";
   state.elapsed = 0; state.spokeSeconds = 0; renderTimer();
+  state.idemKey = null;                       // a new take gets a new idempotency key
   $("status").textContent = "";
 }
 
@@ -309,37 +310,97 @@ async function analyze() {
     target_text: state.mode === READ_ALOUD ? state.prompt : null,
   };
   if (state.mode === READ_ALOUD && body.kind === "free") body.kind = "read_aloud";
+  // one idempotency key per take: re-clicking or a network retry returns the same job (no double charge)
+  state.idemKey = state.idemKey || `take-${crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2)}`;
   try {
-    let r;
-    if (hasAudio) {
-      const fd = new FormData();
-      fd.append("audio", encodeWav(state.audioChunks, state.audioRate), "take.wav");
-      fd.append("payload", JSON.stringify(body));
-      const resp = await fetch("/api/analyze-audio", { method: "POST", body: fd, headers: { "X-Timezone": TZ } });
-      r = await resp.json().catch(() => ({}));
-      if (resp.status === 401) showAuth("signin", "Your session ended — please sign in again.");
-      if (!resp.ok) throw new Error(r.detail || `Request failed (${resp.status})`);
-      $("transcript").value = r.attempt.transcript;   // show exactly what was analyzed (Whisper text if used)
-    } else {
-      r = await api("/api/analyze", { method: "POST", body: JSON.stringify(body) });
+    let job;
+    try { job = await submitJob(body, hasAudio); } catch (e) {
+      if (e.status !== 409) throw e;            // the take was edited after a failed submit → new key
+      state.idemKey = `take-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      job = await submitJob(body, hasAudio);
     }
-    state.lastAttempt = r.attempt; state.chainId = r.attempt.chain_id;
-    renderAnalysis(r.analysis);
-    renderVoice(r.analysis.voice, r.attempt.id);
-    renderPronunciation(r.analysis);
-    renderLanguage(r.analysis);
-    renderLessonResult(r.lesson_result, r.program);
-    renderFocus(r.analysis);
-    syncMore();
-    if (r.comparison) renderComparison(r.comparison, r.attempt.chain_id);
-    else $("compareCard").classList.add("hidden");
-    $("status").textContent = r.attempt.attempt_no > 1 ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
-    if (innerWidth < 900) $("resultsCard").scrollIntoView({ behavior: "smooth" });
+    rememberJob(job.id);
+    const done = await pollJob(job.id);
+    showJobResult(done);
   } catch (e) {
     $("status").textContent = e.message;
   } finally {
     $("analyzeBtn").disabled = false;
   }
+}
+
+/* ------------------------------------------------------------------ analysis jobs (v8.4) */
+async function submitJob(body, hasAudio) {
+  const headers = { "X-Timezone": TZ, "Idempotency-Key": state.idemKey };
+  let resp;
+  if (hasAudio) {
+    const fd = new FormData();
+    fd.append("audio", encodeWav(state.audioChunks, state.audioRate), "take.wav");
+    fd.append("payload", JSON.stringify(body));
+    resp = await fetch("/api/jobs/audio", { method: "POST", body: fd, headers, credentials: "same-origin" });
+  } else {
+    resp = await fetch("/api/jobs", { method: "POST", body: JSON.stringify(body), credentials: "same-origin",
+      headers: { ...headers, "Content-Type": "application/json" } });
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401) showAuth("signin", "Your session ended — please sign in again.");
+  if (!resp.ok) { const err = new Error(data.detail || `Request failed (${resp.status})`); err.status = resp.status; throw err; }
+  return data;
+}
+
+function rememberJob(id) { try { id ? localStorage.setItem("tts-active-job", id) : localStorage.removeItem("tts-active-job"); } catch (_) {} }
+
+async function pollJob(id) {
+  const labels = { queued: "Queued…", running: "Analyzing — transcribing, measuring and scoring…" };
+  let wait = 400;
+  for (;;) {
+    const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
+    if (job.status === "completed" || job.status === "failed") return job;
+    $("status").textContent = labels[job.status] || "Working…";
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(2000, Math.round(wait * 1.4));
+  }
+}
+
+function showJobResult(job) {
+  rememberJob(null);
+  if (job.status === "failed") { $("status").textContent = job.error || "Analysis failed — please try again."; return; }
+  const r = job.result;
+  if (!r) return;
+  if (r.attempt) {
+    state.lastAttempt = r.attempt; state.chainId = r.attempt.chain_id;
+    $("transcript").value = r.attempt.transcript;   // show exactly what was analyzed (Whisper text if used)
+  }
+  state.idemKey = null;
+  renderAnalysis(r.analysis);
+  if (r.attempt) renderVoice(r.analysis.voice, r.attempt.id); else $("voiceCard").classList.add("hidden");
+  renderPronunciation(r.analysis);
+  renderLanguage(r.analysis);
+  renderLessonResult(r.lesson_result, r.program);
+  renderFocus(r.analysis);
+  syncMore();
+  if (r.comparison) renderComparison(r.comparison, r.attempt.chain_id);
+  else $("compareCard").classList.add("hidden");
+  $("status").textContent = !r.attempt ? "Analyzed (not saved)." : r.attempt.attempt_no > 1
+    ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
+  if (innerWidth < 900) $("resultsCard").scrollIntoView({ behavior: "smooth" });
+}
+
+// After a refresh or a dropped connection, pick up the analysis that was still running.
+async function resumeActiveJob() {
+  let id = null;
+  try { id = localStorage.getItem("tts-active-job"); } catch (_) {}
+  if (!id) {
+    const active = await api("/api/jobs?active=true").catch(() => []);
+    id = active[0]?.id;
+  }
+  if (!id) return;
+  showTab("practice");
+  $("status").textContent = "Finishing the analysis you started…";
+  $("analyzeBtn").disabled = true;
+  try { showJobResult(await pollJob(id)); }
+  catch (_) { rememberJob(null); $("status").textContent = ""; }
+  finally { $("analyzeBtn").disabled = false; }
 }
 function setPromptKeepChain(p) {
   state.prompt = p; state.customPrompt = false;
@@ -1400,5 +1461,6 @@ async function boot() {
   if (me.mode === "accounts" && !me.user) return showAuth("signup");
   showAccount(me);
   await init();
+  resumeActiveJob();
 }
 boot().catch((e) => { $("status").textContent = `Failed to load: ${e.message}`; });

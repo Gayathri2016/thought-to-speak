@@ -28,7 +28,9 @@ def _avg(xs):
 
 
 # --------------------------------------------------------------------------- compare
-def compare(base: dict, cur: dict) -> dict:
+def compare(base: dict, cur: dict, cache=None) -> dict:
+    """Compare two takes. `cache` (a store with get_comparison/put_comparison) persists the narrative, so the AI
+    narrative is generated once per pair — attempts are immutable, so a cached narrative never goes stale."""
     compat = scoring.compatibility(base, cur)
     deltas = {}
     for d in ["overall"] + DIMENSIONS:
@@ -51,14 +53,20 @@ def compare(base: dict, cur: dict) -> dict:
     od = deltas["overall"] or 0
     verdict = ("improved" if od >= 3 else "regressed" if od <= -3 else "steady") if compat["scores"] else "incompatible"
 
+    cached = cache.get_comparison(base["id"], cur["id"]) if cache and base.get("id") and cur.get("id") else None
+    llm_failed = False
     narrative = _heuristic_narrative(improved, regressed, metric_deltas, gained, lost, verdict)
-    if not compat["scores"]:
+    if cached:
+        narrative = cached
+    elif not compat["scores"]:
         narrative["summary"] = ("These two takes were scored differently, so their scores can't be compared fairly. "
                                 + " ".join(compat["reasons"]) + " Compare the transcripts instead, or retry once "
                                 "more so both takes use the same scorer.")
         narrative["still_to_work_on"] = ["Retry once more — the next take will be scored the same way as this one, "
                                          "so you'll get a fair before/after."]
-    if is_read_aloud(cur):
+    if cached:
+        pass                                          # never regenerate (or pay for) a narrative we already have
+    elif is_read_aloud(cur):
         bp, cp = base["analysis"].get("pronunciation") or {}, cur["analysis"].get("pronunciation") or {}
         fixed = sorted({w for w in bp.get("missed", []) + bp.get("unclear", []) + [x["word"] for x in bp.get("substituted", [])]}
                        - {w for w in cp.get("missed", []) + cp.get("unclear", []) + [x["word"] for x in cp.get("substituted", [])]})
@@ -68,6 +76,10 @@ def compare(base: dict, cur: dict) -> dict:
             narrative = _llm_narrative(base, cur, deltas) or narrative
         except Exception as e:
             log.warning("LLM compare failed, using local narrative: %s", e)
+            llm_failed = True                         # don't cache the fallback; try the AI again next time
+    if cache and not cached and not llm_failed and base.get("id") and cur.get("id"):
+        cache.put_comparison(base["id"], cur["id"], {k: narrative[k] for k in ("summary", "what_improved",
+                                                                              "still_to_work_on")})
 
     return {
         "base_id": base["id"], "current_id": cur["id"],
