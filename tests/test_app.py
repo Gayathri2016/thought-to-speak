@@ -694,3 +694,153 @@ def test_llm_corrections_replace_local(monkeypatch):
     c = analysis.analyze(LUNCH, "Toastmasters", "")["review"]["corrections"]
     assert c["source"] == "ai" and c["items"][0]["corrected"] == "Yes, we're ready for lunch."
     assert c["corrected_full"].endswith("I made sambar.")
+
+
+# ----------------------------------------------------------------------------- v8.2: scoring provenance
+def _old_db(path, with_user=True):
+    """A database in the pre-provenance (v8.1) schema, with a mix of takes."""
+    import sqlite3
+    db = sqlite3.connect(path)
+    db.executescript("""
+    CREATE TABLE attempts (id TEXT PRIMARY KEY, chain_id TEXT NOT NULL, attempt_no INTEGER NOT NULL,
+      created_at TEXT NOT NULL, mode TEXT NOT NULL, prompt TEXT, transcript TEXT NOT NULL,
+      challenge_mode INTEGER NOT NULL DEFAULT 0, duration_seconds REAL, provider TEXT, overall INTEGER,
+      structure INTEGER, clarity INTEGER, relevance INTEGER, answer_quality INTEGER, delivery INTEGER,
+      filler_count INTEGER, word_count INTEGER, wpm INTEGER, analysis_json TEXT NOT NULL""" +
+                     (", kind TEXT NOT NULL DEFAULT 'free', lesson_id TEXT, lesson_passed INTEGER, audio_path TEXT,"
+                      " user_id TEXT" if with_user else "") + ");")
+    rows = [
+        ("a1", "c1", 1, "2026-10-01T10:00:00+00:00", "Interview", "openai:gpt-5.6", 70, json.dumps({"metrics": {}})),
+        ("a2", "c1", 2, "2026-10-01T10:05:00+00:00", "Interview", "local:heuristic", 64,
+         json.dumps({"voice": {"transcript_source": "local:faster-whisper base.en"}, "metrics": {}})),
+        ("a3", "c2", 1, "2026-10-02T10:00:00+00:00", "Read aloud", "local:pronunciation", 90,
+         json.dumps({"kind": "read_aloud"})),
+    ]
+    for r in rows:
+        cols = "id, chain_id, attempt_no, created_at, mode, provider, overall, analysis_json, transcript"
+        vals = list(r) + ["hello there friends"]
+        if with_user:
+            cols += ", kind"
+            vals.append("read_aloud" if r[4] == "Read aloud" else "free")
+        db.execute(f"INSERT INTO attempts ({cols}) VALUES ({','.join('?' * len(vals))})", vals)
+    db.commit()
+    before = {r[0]: r[1] for r in db.execute("SELECT id, analysis_json FROM attempts")}
+    db.close()
+    return before
+
+
+@pytest.mark.parametrize("with_user", [True, False])
+def test_migration_backfills_provenance_without_touching_data(tmp_path, with_user):
+    import sqlite3
+    from coach.storage import Store
+    path = tmp_path / "old.db"
+    before = _old_db(path, with_user)
+    Store(path)
+    Store(path)                                                         # second start must be a no-op
+    db = sqlite3.connect(path)
+    db.row_factory = sqlite3.Row
+    rows = {r["id"]: dict(r) for r in db.execute("SELECT * FROM attempts")}
+    assert {k: v["analysis_json"] for k, v in rows.items()} == before   # stored analyses untouched
+    assert rows["a1"]["score_basis"] == "ai" and rows["a1"]["scoring_version"] == "ai-legacy"
+    assert rows["a1"]["model"] == "gpt-5.6"
+    assert rows["a2"]["scoring_version"] == "heuristic-legacy" and "whisper" in rows["a2"]["transcript_source"]
+    assert rows["a1"]["transcript_source"].startswith("text")
+    assert rows["a3"]["scoring_version"] == "pronunciation-legacy"
+    assert json.loads(db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]) == 2
+
+
+def test_new_takes_store_provenance(client):
+    r = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT}).json()
+    att, pv = r["attempt"], r["analysis"]["provenance"]
+    from coach import scoring
+    assert att["scoring_version"] == f"heuristic-{scoring.HEURISTIC_VERSION}" == pv["scoring_version"]
+    assert att["score_basis"] == "heuristic" and att["model"] is None
+    assert len(att["rubric_version"]) == 10 and att["transcript_source"].startswith("text")
+    assert pv["scores"]["structure"] == "heuristic" and pv["scores"]["delivery"] == "heuristic"
+    assert pv["metrics"]["seconds"] == "estimated" and pv["metrics"]["filler_rate"] == "measured"
+    lesson = client.post("/api/analyze", json={"transcript": STRONG, "lesson_id": "c1-bluf"}).json()["attempt"]
+    assert lesson["rubric_version"] != att["rubric_version"]            # judged against a different rubric
+
+
+def test_ai_scores_marked_and_failed_merge_falls_back(monkeypatch):
+    from coach import analysis, llm
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: ({"scores": {"structure": 80, "clarity": 70}},
+                                                               "anthropic:claude-test"))
+    pv = analysis.analyze(STRONG, "Interview", PROMPT)["provenance"]
+    assert pv["score_basis"] == "mixed" and pv["scores"]["structure"] == "ai" and pv["scores"]["relevance"] == "heuristic"
+    assert pv["model"] == "claude-test"
+    full = {"scores": {d: 70 for d in ("structure", "clarity", "relevance", "answer_quality")}}
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (full, "anthropic:claude-test"))
+    pv = analysis.analyze(STRONG, "Interview", PROMPT)["provenance"]
+    assert pv["score_basis"] == "ai" and pv["scoring_version"].startswith("ai-")
+
+
+def _rescore(tmp_path, attempt_id, **cols):
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "t.db")
+    db.execute(f"UPDATE attempts SET {', '.join(f'{k}=?' for k in cols)} WHERE id=?", [*cols.values(), attempt_id])
+    db.commit()
+    db.close()
+
+
+def test_retry_comparison_refuses_incompatible_scores(client, tmp_path):
+    r1 = client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT}).json()["attempt"]
+    _rescore(tmp_path, r1["id"], scoring_version="ai-p7", score_basis="ai", model="gpt-old")
+    r2 = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT, "chain_id": r1["chain_id"]}).json()
+    c = r2["comparison"]
+    assert c["verdict"] == "incompatible" and c["deltas"]["overall"] is None
+    assert "scored differently" in c["summary"] and "gpt-old" in c["summary"]
+    assert c["compatibility"]["scores"] is False and c["compatibility"]["metrics"] is True
+    assert c["metric_deltas"]["filler_count"] is not None              # measured counts still comparable
+
+    # same scorer but a different transcription source → scores comparable, filler counts not
+    r3 = client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT, "chain_id": r1["chain_id"]}).json()
+    _rescore(tmp_path, r3["attempt"]["id"], transcript_source="openai:whisper-1")
+    c2 = client.get("/api/compare", params={"base_id": r2["attempt"]["id"], "current_id": r3["attempt"]["id"]}).json()
+    assert c2["compatibility"]["scores"] is True and c2["deltas"]["overall"] is not None
+    assert c2["compatibility"]["metrics"] is False and c2["metric_deltas"]["filler_count"] is None
+    assert "Whisper" in c2["compatibility"]["metric_reason"]
+
+
+def test_rubric_change_makes_scores_incompatible():
+    from coach import scoring
+    a = {"scoring_version": "heuristic-h8", "rubric_version": "aaa", "attempt_no": 1, "transcript_source": "text"}
+    b = {**a, "rubric_version": "bbb", "attempt_no": 2}
+    c = scoring.compatibility(a, b)
+    assert not c["scores"] and "different rubrics" in c["reasons"][0]
+    assert scoring.compatibility(a, {**a, "attempt_no": 2})["scores"]
+
+
+def test_progress_only_averages_compatible_takes(client, tmp_path):
+    old = client.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT}).json()["attempt"]
+    _rescore(tmp_path, old["id"], scoring_version="heuristic-legacy")
+    for t in (WEAK, WEAK):
+        client.post("/api/analyze", json={"transcript": t, "prompt": PROMPT})
+    p = client.get("/api/progress").json()
+    assert p["scoring"]["compatible_count"] == 2 and p["scoring"]["excluded_count"] == 1
+    assert "earlier version" not in p["scoring"]["current"] and "1 earlier take was scored differently" in p["scoring"]["note"]
+    assert [t["comparable"] for t in p["trend"]] == [False, True, True]
+    weak_overall = client.get("/api/history").json()[0]["overall"]
+    assert p["avg_overall_last10"] == weak_overall and p["best_overall"] == weak_overall   # legacy STRONG not mixed in
+
+
+def test_scoring_benchmark_has_no_regressions():
+    """Deterministic: built-in scorer vs tests/benchmark (orderings, framework parts, verdicts, drift)."""
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("eval_scoring", Path(__file__).parent.parent / "scripts" / "eval_scoring.py")
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    results, problems = ev.run_local()
+    assert len(results) >= 12 and problems == []
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not __import__("os").getenv("RUN_LIVE_EVAL"), reason="live provider eval: set RUN_LIVE_EVAL=1")
+def test_live_provider_benchmark():                                     # pragma: no cover — costs API calls
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).parent.parent
+    assert subprocess.run([sys.executable, str(root / "scripts" / "eval_scoring.py"), "--live"]).returncode == 0

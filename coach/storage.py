@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import scoring
 from .analysis import DIMENSIONS
 
 _lock = threading.Lock()
@@ -67,16 +68,49 @@ class Store:
         if legacy_json:
             self._import_legacy(Path(legacy_json))
 
-    @staticmethod
-    def _migrate(c):
-        """v3: attempts can belong to a lesson / daily-plan item."""
+    SCHEMA_VERSION = 2
+
+    @classmethod
+    def _migrate(cls, c):
+        """Additive, idempotent migrations. Never drops or rewrites existing data — only adds columns and fills
+        new columns that are still NULL.
+        v3: lesson/daily-plan columns · v6: user_id · schema 2 (v8.2): scoring provenance."""
         cols = {r["name"] for r in c.execute("PRAGMA table_info(attempts)")}
         for name, ddl in (("kind", "TEXT NOT NULL DEFAULT 'free'"), ("lesson_id", "TEXT"),
-                          ("lesson_passed", "INTEGER"), ("audio_path", "TEXT"), ("user_id", "TEXT")):
+                          ("lesson_passed", "INTEGER"), ("audio_path", "TEXT"), ("user_id", "TEXT"),
+                          ("score_basis", "TEXT"), ("scoring_version", "TEXT"), ("model", "TEXT"),
+                          ("rubric_version", "TEXT"), ("transcript_source", "TEXT")):
             if name not in cols:
                 c.execute(f"ALTER TABLE attempts ADD COLUMN {name} {ddl}")
         c.execute("CREATE INDEX IF NOT EXISTS idx_attempts_lesson ON attempts(lesson_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id, created_at)")
+        cls._backfill_provenance(c)
+        c.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (json.dumps(cls.SCHEMA_VERSION),))
+
+    @staticmethod
+    def _backfill_provenance(c):
+        """Takes saved before scoring was versioned get an explicit 'legacy' scoring version, so they're never
+        silently mixed with newer scores. Basis, model and transcript source are recovered from what was stored."""
+        rows = c.execute("SELECT id, provider, kind, analysis_json FROM attempts WHERE scoring_version IS NULL").fetchall()
+        for r in rows:
+            provider = r["provider"] or ""
+            try:
+                a = json.loads(r["analysis_json"] or "{}")
+            except ValueError:
+                a = {}
+            if r["kind"] == "read_aloud" or a.get("kind") == "read_aloud":
+                basis, model = "heuristic", None
+                version = f"pronunciation-{scoring.LEGACY}"
+            elif provider.startswith(("openai:", "anthropic:")):
+                basis, model = "ai", provider.split(":", 1)[1]
+                version = f"ai-{scoring.LEGACY}"
+            else:
+                basis, model = "heuristic", None
+                version = f"heuristic-{scoring.LEGACY}"
+            voice = a.get("voice") or {}
+            source = scoring.normalize_transcript_source(voice.get("transcript_source"), bool(voice))
+            c.execute("""UPDATE attempts SET score_basis=?, scoring_version=?, model=?, transcript_source=?
+                         WHERE id=? AND scoring_version IS NULL""", (basis, version, model, source, r["id"]))
 
     @contextmanager
     def _conn(self):
@@ -115,9 +149,13 @@ class Store:
                 "kind": kind or "free", "lesson_id": lesson_id,
                 "lesson_passed": None if lesson_passed is None else int(bool(lesson_passed)),
                 "audio_path": audio_path, "user_id": user_id,
+                **{k: (analysis.get("provenance") or {}).get(k)
+                   for k in ("score_basis", "scoring_version", "model", "rubric_version", "transcript_source")},
             }
             cols = ",".join(rec)
             c.execute(f"INSERT INTO attempts ({cols}) VALUES ({','.join('?' * len(rec))})", list(rec.values()))
+            if not rec["scoring_version"]:         # imported / pre-provenance data → explicit legacy labels now
+                self._backfill_provenance(c)
         return self.get(rec["id"], user_id)
 
     def delete(self, attempt_id: str, user_id=None) -> bool:

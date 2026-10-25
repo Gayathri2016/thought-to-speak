@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.2 — trustworthy scoring
+- Each take stores its scoring version, score basis (AI / built-in / mixed), model, rubric fingerprint and
+  transcript source. Older takes are migrated in place as "legacy" without changing their stored analysis.
+- Retry comparisons and progress only compare compatible scores and explain why when they can't.
+- Results label each score as AI, estimate or formula, and mark estimated time/pace.
+- Scoring benchmark (`tests/benchmark`) and `scripts/eval_scoring.py`, with an optional live-provider run.
+
 ## v8.1 — corrections
 - New **Corrections** section in every review: each sentence that needs work as "You said → Say", with what
   changed and why, plus your whole answer corrected (with ▶ Listen).

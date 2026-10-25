@@ -7,6 +7,7 @@ from . import language as lang
 from . import llm, metrics
 from . import pronunciation as pron
 from . import review as review_mod
+from . import scoring
 from .prompts import MODES, normalize_mode
 
 log = logging.getLogger("thought_to_speak")
@@ -29,7 +30,8 @@ you're let's us them his her its""".split())
 
 # Cue words used to detect whether each framework element shows up in the transcript.
 FRAMEWORK_CUES = {
-    "Situation": ["when i", "at my", "we were", "there was", "the situation", "back in", "last year", "context"],
+    "Situation": ["when i", "at my", "we were", "there was", "the situation", "back in", "last year", "context",
+                  "in my last role", "in my previous role", "in my last job", "in my current role", "last quarter"],
     "Task": ["my role", "i was responsible", "i needed", "the goal", "my job", "tasked", "i owned", "objective", "my task", "my responsibility", "i had to"],
     "Action": ["i decided", "i built", "i led", "i proposed", "i worked", "i created", "i talked", "so i", "i set up",
                "i designed", "i started", "i reached out", "i mapped", "i automated", "i rebuilt", "i wrote", "i ran", "i moved", "i added", "i changed", "i pushed"],
@@ -479,6 +481,11 @@ def analyze_read_aloud(text: str, target: str, words: list[dict] | None = None, 
         else "Move to the next sentence in this set.",
         "voice": ({**voice, "scores": voice_scores} if voice else None), "challenge_mode": False,
         "provider": "local:pronunciation", "warning": None, "mode": "Read aloud",
+        "provenance": scoring.provenance(
+            dim_sources={}, kind="read_aloud", provider="local:pronunciation",
+            spec={"name": "Read aloud", "framework": [], "rubric": target, "target_seconds": []},
+            transcript_source=scoring.normalize_transcript_source((voice or {}).get("transcript_source"), bool(voice)),
+            seconds_measured=bool(m.get("seconds_measured")), has_audio=bool(voice)),
         "framework_name": "Read aloud", "framework_coverage": None,
         "filler_count": m["filler_count"], "word_count": m["word_count"], "estimated_seconds": m["seconds"],
     }
@@ -511,6 +518,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     provider, warning = "local:heuristic", None
     digest = review_mod.history_digest(history or [])
     llm_review = None
+    dim_sources = {d: "heuristic" for d in scoring.CONTENT_DIMS}
 
     if llm.active_provider() != "local":
         try:
@@ -520,6 +528,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
                 v = _clamp((data.get("scores") or {}).get(d))
                 if v is not None:
                     scores[d] = v
+                    dim_sources[d] = "ai"
             smap = data.get("structure_map")
             if isinstance(smap, list) and smap:
                 structure_map = [
@@ -539,6 +548,9 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         except Exception as e:  # network, auth, bad JSON — never break the practice loop
             log.warning("LLM analysis failed, using local fallback: %s", e)
             provider = "local:heuristic"
+            for d in scoring.CONTENT_DIMS:      # discard any partial AI scores from a failed merge
+                scores[d] = h["scores"][d]
+            dim_sources = {d: "heuristic" for d in scoring.CONTENT_DIMS}
             warning = f"AI provider failed ({type(e).__name__}); showing local analysis."
 
     if voice:  # measured voice feedback always comes from the audio, not the LLM
@@ -571,6 +583,10 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         "voice": ({**voice, "scores": voice_scores} if voice else None),
         "language": language,
         "review": rv,
+        "provenance": scoring.provenance(
+            dim_sources=dim_sources, kind="speech", provider=provider, spec=spec,
+            transcript_source=scoring.normalize_transcript_source((voice or {}).get("transcript_source"), bool(voice)),
+            seconds_measured=bool(m.get("seconds_measured")), has_audio=bool(voice)),
         "provider": provider,
         "warning": warning,
         # legacy keys kept for older history entries / clients

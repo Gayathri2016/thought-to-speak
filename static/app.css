@@ -135,7 +135,7 @@ textarea { resize: vertical; }
 .dim-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
 .dim-bar > div { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; transition: width .6s ease; }
 .dim b { text-align: right; font-variant-numeric: tabular-nums; }
-.dim.weak span { font-weight: 700; } .dim.weak span::after { content: " ← focus"; color: var(--bad); font-weight: 600; font-size: 11.5px; }
+.dim.weak > span:first-child { font-weight: 700; } .dim.weak > span:first-child::after { content: " ← focus"; color: var(--bad); font-weight: 600; font-size: 11.5px; }
 
 .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 16px; }
 @media (max-width: 520px) { .metrics { grid-template-columns: repeat(3, 1fr); } }
@@ -487,3 +487,15 @@ body.signed-out .top, body.signed-out #appMain { display: none; }
 .rv-better span:last-child { font-weight: 650; color: var(--good); }
 .rv-why { margin: 4px 0 0 72px; padding-left: 16px; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 520px) { .rv-said, .rv-better { grid-template-columns: 1fr; gap: 2px; } .rv-why { margin-left: 0; } }
+
+/* scoring provenance (v8.2) */
+.pb { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .03em; padding: 0 5px; border-radius: 4px; vertical-align: 1px; line-height: 15px; }
+.pb.ai { background: var(--accent-soft); color: var(--accent-strong); }
+.pb.est { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.metric.estimated b { color: var(--ink-2); }
+.metric sup { font-size: 9px; font-weight: 700; color: var(--muted); margin-left: 2px; }
+.prov-line { margin: 6px 0 0; line-height: 1.6; }
+.dot.faded { opacity: .28; }
+.scoring-note { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; }
+.cmp-warn { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; }
+.verdict.incompatible { background: var(--warn-soft); color: var(--warn); }

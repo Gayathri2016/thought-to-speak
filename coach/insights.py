@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 from . import llm
+from . import scoring
 from .analysis import DIMENSION_LABELS, DIMENSIONS
 from .prompts import MODES, random_prompt
 
@@ -28,31 +29,41 @@ def _avg(xs):
 
 # --------------------------------------------------------------------------- compare
 def compare(base: dict, cur: dict) -> dict:
+    compat = scoring.compatibility(base, cur)
     deltas = {}
     for d in ["overall"] + DIMENSIONS:
         a, b = base.get(d), cur.get(d)
-        deltas[d] = None if a is None or b is None else b - a
+        deltas[d] = None if a is None or b is None or not compat["scores"] else b - a
     bm, cm = base["analysis"].get("metrics", {}), cur["analysis"].get("metrics", {})
-    metric_deltas = {k: (cm.get(k, 0) or 0) - (bm.get(k, 0) or 0)
+    metric_deltas = {k: ((cm.get(k, 0) or 0) - (bm.get(k, 0) or 0)) if compat["metrics"] else None
                      for k in ("filler_count", "filler_rate", "hedge_count", "word_count", "seconds", "wpm")}
+    if not compat["metrics"]:   # time is still comparable when both takes were timed from audio
+        if bm.get("seconds_measured") and cm.get("seconds_measured"):
+            metric_deltas["seconds"] = (cm.get("seconds") or 0) - (bm.get("seconds") or 0)
 
     def present(a):
         return {x["label"] for x in a["analysis"].get("structure_map", []) if x.get("status") == "present"}
-    gained = sorted(present(cur) - present(base))
-    lost = sorted(present(base) - present(cur))
+    gained = sorted(present(cur) - present(base)) if compat["scores"] else []
+    lost = sorted(present(base) - present(cur)) if compat["scores"] else []
 
     improved = [d for d in DIMENSIONS if (deltas[d] or 0) >= 3]
     regressed = [d for d in DIMENSIONS if (deltas[d] or 0) <= -3]
     od = deltas["overall"] or 0
-    verdict = "improved" if od >= 3 else "regressed" if od <= -3 else "steady"
+    verdict = ("improved" if od >= 3 else "regressed" if od <= -3 else "steady") if compat["scores"] else "incompatible"
 
     narrative = _heuristic_narrative(improved, regressed, metric_deltas, gained, lost, verdict)
+    if not compat["scores"]:
+        narrative["summary"] = ("These two takes were scored differently, so their scores can't be compared fairly. "
+                                + " ".join(compat["reasons"]) + " Compare the transcripts instead, or retry once "
+                                "more so both takes use the same scorer.")
+        narrative["still_to_work_on"] = ["Retry once more — the next take will be scored the same way as this one, "
+                                         "so you'll get a fair before/after."]
     if is_read_aloud(cur):
         bp, cp = base["analysis"].get("pronunciation") or {}, cur["analysis"].get("pronunciation") or {}
         fixed = sorted({w for w in bp.get("missed", []) + bp.get("unclear", []) + [x["word"] for x in bp.get("substituted", [])]}
                        - {w for w in cp.get("missed", []) + cp.get("unclear", []) + [x["word"] for x in cp.get("substituted", [])]})
         narrative["what_improved"] = ([f"Now clear: {', '.join(fixed[:5])}."] if fixed else []) or narrative["what_improved"]
-    elif llm.active_provider() != "local":
+    elif llm.active_provider() != "local" and compat["scores"]:
         try:
             narrative = _llm_narrative(base, cur, deltas) or narrative
         except Exception as e:
@@ -66,11 +77,14 @@ def compare(base: dict, cur: dict) -> dict:
         "deltas": deltas, "metric_deltas": metric_deltas,
         "base_fillers": bm.get("filler_count", 0) or 0, "current_fillers": cm.get("filler_count", 0) or 0,
         "framework_gained": gained, "framework_lost": lost,
-        "verdict": verdict, **narrative,
+        "verdict": verdict, "compatibility": compat,
+        "scorers": {"base": scoring.describe_scorer(base), "current": scoring.describe_scorer(cur)},
+        **narrative,
     }
 
 
 def _heuristic_narrative(improved, regressed, md, gained, lost, verdict):
+    md = {k: (v or 0) for k, v in md.items()}
     better, worse = [], []
     for d in improved:
         better.append(f"{DIMENSION_LABELS[d]} went up.")
@@ -84,7 +98,8 @@ def _heuristic_narrative(improved, regressed, md, gained, lost, verdict):
         worse.append(f"You dropped: {', '.join(lost)}.")
     if md["filler_count"] > 0:
         worse.append(f"{md['filler_count']} more fillers than before.")
-    summary = {"improved": "Real progress — the retry loop is working.",
+    summary = {"incompatible": "",
+               "improved": "Real progress — the retry loop is working.",
                "regressed": "This take was weaker overall. That's normal when you change approach; try once more.",
                "steady": "Roughly the same overall. Pick ONE dimension and exaggerate it on the next take."}[verdict]
     return {"summary": summary, "what_improved": better or ["No clear gains yet."],
@@ -222,21 +237,28 @@ def progress(attempts: list[dict]) -> dict:
 
     all_attempts = attempts
     attempts = [a for a in attempts if not is_read_aloud(a)]  # drills have their own stats
-    overall = [a for a in attempts if a.get("overall") is not None]
+    all_overall = [a for a in attempts if a.get("overall") is not None]
+    # Only takes scored by the current scorer are averaged or compared; older ones stay visible in the trend.
+    key = scoring.scoring_key(all_overall[-1]) if all_overall else None
+    overall = [a for a in all_overall if scoring.scoring_key(a) == key]
+    excluded = len(all_overall) - len(overall)
     last10, prev10 = overall[-10:], overall[-20:-10]
-    scored = [a for a in attempts if all(a.get(x) is not None for x in DIMENSIONS)]
+    scored = [a for a in overall if all(a.get(x) is not None for x in DIMENSIONS)]
 
     by_mode = defaultdict(list)
     for a in overall:
         by_mode[a["mode"]].append(a["overall"])
 
     chains = defaultdict(list)
-    for a in overall:
+    for a in all_overall:
         chains[a["chain_id"]].append(a)
-    gains = [c[-1]["overall"] - c[0]["overall"] for c in chains.values() if len(c) >= 2]
+    gains = [c[-1]["overall"] - c[0]["overall"] for c in chains.values()
+             if len(c) >= 2 and scoring.compatibility(c[0], c[-1])["scores"]]
 
+    tclass = scoring.transcript_class(all_overall[-1].get("transcript_source")) if all_overall else None
+    same_text = [a for a in attempts if scoring.transcript_class(a.get("transcript_source")) == tclass]
     fill = Counter()
-    for a in attempts[-20:]:
+    for a in same_text[-20:]:
         fill.update((a["analysis"].get("metrics") or {}).get("fillers") or {})
 
     return {
@@ -250,14 +272,25 @@ def progress(attempts: list[dict]) -> dict:
         "avg_retry_gain": _avg(gains),
         "retry_chains": len(gains),
         "trend": [{"date": a["created_at"], "overall": a["overall"], "mode": a["mode"],
-                   "attempt_no": a["attempt_no"]} for a in overall[-40:]],
+                   "attempt_no": a["attempt_no"], "comparable": scoring.scoring_key(a) == key}
+                  for a in all_overall[-40:]],
+        "scoring": {
+            "current": scoring.describe_scorer(all_overall[-1]) if all_overall else None,
+            "compatible_count": len(overall), "excluded_count": excluded,
+            "note": (f"Averages and trends use the {len(overall)} take{'s' if len(overall) != 1 else ''} scored by "
+                     f"{scoring.describe_scorer(all_overall[-1])}. {excluded} earlier take"
+                     f"{'s were' if excluded != 1 else ' was'} scored differently, so "
+                     f"{'they are' if excluded != 1 else 'it is'} shown faded and not averaged.") if excluded else None,
+            "filler_source": tclass,
+        },
         "dimension_avgs": {d: _avg([a[d] for a in scored[-10:]]) for d in DIMENSIONS},
         "dimension_avgs_prev": {d: _avg([a[d] for a in scored[-20:-10]]) for d in DIMENSIONS},
         "dimension_labels": DIMENSION_LABELS,
         "by_mode": {m: {"count": len(v), "avg": _avg(v), "best": max(v)} for m, v in by_mode.items()},
         "top_fillers": fill.most_common(6),
-        "avg_filler_rate": _avg([(a["analysis"].get("metrics") or {}).get("filler_rate") for a in attempts[-10:]]),
-        "recommendation": recommend(attempts),
+        "avg_filler_rate": _avg([(a["analysis"].get("metrics") or {}).get("filler_rate") for a in same_text[-10:]]),
+        "recommendation": recommend([a for a in attempts if a.get("overall") is None
+                                     or scoring.scoring_key(a) == key]),
         "language": language_progress(all_attempts),
     }
 

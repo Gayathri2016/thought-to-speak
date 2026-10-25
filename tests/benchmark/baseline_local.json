@@ -1,0 +1,135 @@
+{
+ "heuristic_version": "h8",
+ "cases": {
+  "int-disagree-strong": {
+   "overall": 79,
+   "scores": {
+    "structure": 84,
+    "clarity": 72,
+    "relevance": 69,
+    "answer_quality": 78,
+    "delivery": 92
+   }
+  },
+  "int-disagree-medium": {
+   "overall": 61,
+   "scores": {
+    "structure": 66,
+    "clarity": 72,
+    "relevance": 45,
+    "answer_quality": 37,
+    "delivery": 92
+   }
+  },
+  "int-disagree-weak": {
+   "overall": 49,
+   "scores": {
+    "structure": 35,
+    "clarity": 58,
+    "relevance": 65,
+    "answer_quality": 37,
+    "delivery": 56
+   }
+  },
+  "int-fail-strong": {
+   "overall": 77,
+   "scores": {
+    "structure": 88,
+    "clarity": 72,
+    "relevance": 63,
+    "answer_quality": 71,
+    "delivery": 92
+   }
+  },
+  "int-fail-weak": {
+   "overall": 53,
+   "scores": {
+    "structure": 42,
+    "clarity": 62,
+    "relevance": 65,
+    "answer_quality": 32,
+    "delivery": 70
+   }
+  },
+  "lead-update-strong": {
+   "overall": 78,
+   "scores": {
+    "structure": 92,
+    "clarity": 72,
+    "relevance": 69,
+    "answer_quality": 64,
+    "delivery": 92
+   }
+  },
+  "lead-update-weak": {
+   "overall": 47,
+   "scores": {
+    "structure": 35,
+    "clarity": 58,
+    "relevance": 65,
+    "answer_quality": 28,
+    "delivery": 54
+   }
+  },
+  "tech-cache-strong": {
+   "overall": 75,
+   "scores": {
+    "structure": 92,
+    "clarity": 72,
+    "relevance": 69,
+    "answer_quality": 51,
+    "delivery": 92
+   }
+  },
+  "tech-cache-weak": {
+   "overall": 50,
+   "scores": {
+    "structure": 44,
+    "clarity": 48,
+    "relevance": 65,
+    "answer_quality": 34,
+    "delivery": 62
+   }
+  },
+  "toast-habit-strong": {
+   "overall": 75,
+   "scores": {
+    "structure": 88,
+    "clarity": 72,
+    "relevance": 45,
+    "answer_quality": 78,
+    "delivery": 92
+   }
+  },
+  "toast-habit-weak": {
+   "overall": 43,
+   "scores": {
+    "structure": 35,
+    "clarity": 50,
+    "relevance": 45,
+    "answer_quality": 30,
+    "delivery": 61
+   }
+  },
+  "fde-price-strong": {
+   "overall": 81,
+   "scores": {
+    "structure": 84,
+    "clarity": 72,
+    "relevance": 72,
+    "answer_quality": 85,
+    "delivery": 92
+   }
+  },
+  "fde-price-weak": {
+   "overall": 50,
+   "scores": {
+    "structure": 35,
+    "clarity": 54,
+    "relevance": 65,
+    "answer_quality": 28,
+    "delivery": 78
+   }
+  }
+ }
+}

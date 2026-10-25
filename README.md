@@ -149,6 +149,8 @@ app.py               FastAPI routes
 coach/analysis.py    heuristic + LLM analysis, Challenge Mode guard
 coach/review.py      evaluator / coach / mentor review and part-by-part breakdown
 coach/corrections.py sentence corrections: false starts, run-ons, fillers, grammar
+coach/scoring.py     scoring provenance (versions, rubric fingerprint, transcript source) + compatibility rules
+scripts/eval_scoring.py  scoring benchmark (tests/benchmark/)
 coach/audio.py       waveform analysis and voice scores (numpy)
 coach/transcribe.py  Whisper: OpenAI API or local faster-whisper
 coach/metrics.py     fillers, hedges, vague words, WPM
@@ -163,6 +165,28 @@ content/programs/    daily programs (JSON) — e.g. the 28-Day Speaking Sprint
 content/pronunciation.json, content/vocabulary.json, content/lexicon/  drills, word bank, CMU dictionary subset
 static/              UI — plain HTML/CSS/JS, no build step
 tests/               pytest
+```
+
+## Scoring you can trust
+
+Every take records **how** it was scored: the scorer (`ai`, `heuristic` or `mixed`) and its version, the AI
+model, a fingerprint of the rubric it was judged against, and where the transcript came from. Scores from
+different scorers are never averaged or compared as if they meant the same thing:
+
+- A retry scored differently from the take before it shows **"Not comparable"** with the reason, instead of a
+  misleading "+12".
+- Progress averages only use takes from your current scorer; older ones are shown faded in the trend.
+- Filler counts are only compared between takes from the same transcription source (Whisper keeps "um/uh",
+  browser speech-to-text drops many of them).
+- In the results, each score is tagged **AI** (judged by the AI coach), **est.** (built-in estimate) or
+  **formula** (delivery, computed from measured signals). Untagged numbers are measured.
+
+Scoring regressions are caught by a small human-ranked benchmark:
+
+```bash
+python scripts/eval_scoring.py                    # built-in scorer vs. saved baseline (also runs in pytest)
+python scripts/eval_scoring.py --update-baseline  # after an intentional change — bump HEURISTIC_VERSION first
+RUN_LIVE_EVAL=1 pytest -m live                    # optional: evaluate your configured AI provider (API cost)
 ```
 
 ## Tests

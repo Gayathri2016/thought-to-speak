@@ -368,19 +368,36 @@ function renderAnalysis(a) {
   }
   const labels = state.config.dimensions, s = a.scores;
   const weakest = DIMS.reduce((w, d) => (s[d] < s[w] ? d : w), DIMS[0]);
+  const pv = a.provenance || {};
   $("dims").innerHTML = DIMS.map((d) => `
-    <div class="dim ${d === weakest ? "weak" : ""}"><span>${esc(labels[d])}</span>
+    <div class="dim ${d === weakest ? "weak" : ""}"><span>${esc(labels[d])} ${provBadge(pv.scores?.[d], d)}</span>
       <div class="dim-bar"><div style="width:${s[d]}%"></div></div><b>${s[d]}</b></div>`).join("");
 
-  const m = a.metrics;
+  const m = a.metrics, est = !m.seconds_measured;
   $("metrics").innerHTML = [
-    [m.word_count, "words"],
-    [fmtTime(m.seconds) + (m.seconds_measured ? "" : "*"), m.seconds_measured ? "spoken" : "est. time"],
-    [m.wpm || "—", "words / min"],
-    [m.filler_rate, "fillers / 100w"],
-    [m.hedge_count, "hedges"],
-  ].map(([v, l]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+    [m.word_count, "words", "measured"],
+    [fmtTime(m.seconds), est ? "est. time" : "spoken", est ? "estimated" : "measured"],
+    [m.wpm || "—", "words / min", est ? "estimated" : "measured"],
+    [m.filler_rate, "fillers / 100w", "measured"],
+    [m.hedge_count, "hedges", "measured"],
+  ].map(([v, l, k]) => `<div class="metric ${k}" title="${k === "estimated" ? "Estimated from word count (no recording timing)" : "Counted from your transcript or measured from your recording"}">
+    <b>${esc(v)}${k === "estimated" ? "<sup>est</sup>" : ""}</b><span>${esc(l)}</span></div>`).join("");
+  $("provenanceLine").innerHTML = provenanceLine(pv);
   finishAnalysis(a);
+}
+
+/* ------------------------------------------------------------------ scoring provenance (v8.2) */
+function provBadge(src, dim) {
+  if (src === "ai") return `<span class="pb ai" title="Judged by the AI coach">AI</span>`;
+  if (dim === "delivery") return `<span class="pb est" title="Built-in formula over measured signals: fillers, hedges, pace, pauses and pitch">formula</span>`;
+  return `<span class="pb est" title="Built-in heuristic estimate — add an API key for AI judgement">est.</span>`;
+}
+function provenanceLine(pv) {
+  if (!pv.scoring_version) return "";
+  return `Scored by ${esc(pv.scorer || pv.scoring_version)} · transcript: ${esc(pv.transcript_source || "unknown")}` +
+    `${pv.rubric_version ? ` · rubric ${esc(pv.rubric_version)}` : ""}<br>` +
+    `<span class="pb ai">AI</span> judged by the AI coach · <span class="pb est">est.</span> built-in estimate · ` +
+    `numbers without a tag are measured from your transcript or recording.`;
 }
 
 function finishAnalysis(a) {
@@ -511,6 +528,7 @@ function deltaCell(d) {
 }
 
 function fillerDeltaCell(d) {  // fewer fillers is better
+  if (d === null || d === undefined) return `<td class="delta flat">—</td>`;
   const cls = d < 0 ? "up" : d > 0 ? "down" : "flat";
   return `<td class="delta ${cls}">${d < 0 ? "▼" : d > 0 ? "▲" : "•"} ${d > 0 ? "+" : ""}${d}</td>`;
 }
@@ -518,17 +536,21 @@ function fillerDeltaCell(d) {  // fewer fillers is better
 async function renderComparison(c, chainId) {
   $("compareCard").classList.remove("hidden");
   const v = $("verdict"); v.className = `verdict ${c.verdict}`;
-  v.textContent = { improved: "▲ Improved", regressed: "▼ Dipped", steady: "• Steady" }[c.verdict];
+  v.textContent = { improved: "▲ Improved", regressed: "▼ Dipped", steady: "• Steady", incompatible: "≠ Not comparable" }[c.verdict];
   $("compareSummary").textContent = c.summary;
+  const cmp = c.compatibility || { scores: true, metrics: true };
+  $("compareSummary").classList.toggle("cmp-warn", !cmp.scores);
   const labels = { overall: "Overall", ...state.config.dimensions };
   $("compareTable").innerHTML =
     `<tr><th>Skill</th><th>Take ${c.base_attempt}</th><th>Take ${c.current_attempt}</th><th>Change</th></tr>` +
     ["overall", ...DIMS].map((d) => `<tr><td>${d === "overall" ? "<b>Overall</b>" : esc(labels[d])}</td>
       <td>${c.base_scores[d] ?? "—"}</td><td><b>${c.current_scores[d] ?? "—"}</b></td>${deltaCell(c.deltas[d])}</tr>`).join("") +
-    `<tr><td>Filler words</td><td>${c.base_fillers}</td><td><b>${c.current_fillers}</b></td>${fillerDeltaCell(c.metric_deltas.filler_count)}</tr>`;
+    `<tr><td>Filler words</td><td>${c.base_fillers}</td><td><b>${c.current_fillers}</b></td>${fillerDeltaCell(c.metric_deltas.filler_count)}</tr>` +
+    (cmp.metric_reason ? `<tr><td colspan="4" class="small muted">${esc(cmp.metric_reason)}</td></tr>` : "");
   const li = (xs) => (xs || []).map((x) => `<li>${esc(x)}</li>`).join("");
   $("cmpBetter").innerHTML = li(c.what_improved);
   $("cmpWorse").innerHTML = li(c.still_to_work_on);
+  $("takesSpark").classList.toggle("hidden", !cmp.scores);   // bar heights imply a comparison — hide if unfair
   try {
     const chain = await api(`/api/chain/${chainId}`);
     $("takesSpark").innerHTML = chain.map((t, i) =>
@@ -567,6 +589,8 @@ async function loadProgress() {
   ];
   $("kpis").innerHTML = k.map(([v, l, s]) => `<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${l}</div><div class="d">${s}</div></div>`).join("");
   drawTrend(p.trend);
+  $("scoringNote").textContent = p.scoring?.note || "";
+  $("scoringNote").classList.toggle("hidden", !p.scoring?.note);
   drawDims(p.dimension_avgs, p.dimension_avgs_prev, p.dimension_labels);
   $("modeTable").innerHTML = `<tr><th>Scenario</th><th>Takes</th><th>Avg</th><th>Best</th></tr>` +
     Object.entries(p.by_mode).sort((a, b) => b[1].count - a[1].count)
@@ -614,8 +638,10 @@ function drawTrend(points) {
   const y = (v) => T + (1 - v / 100) * (H - T - B);
   let g = "";
   [0, 25, 50, 75, 100].forEach((v) => (g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`));
-  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.overall).toFixed(1)}`).join("");
-  const dots = points.map((p, i) => `<circle class="dot ${p.attempt_no > 1 ? "retry" : ""}" cx="${x(i)}" cy="${y(p.overall)}" r="4.5"/>`).join("");
+  // the line joins only takes from the current scorer; others are faded dots (not comparable)
+  const path = points.map((p, i) => [p, i]).filter(([p]) => p.comparable !== false)
+    .map(([p, i], j) => `${j ? "L" : "M"}${x(i).toFixed(1)},${y(p.overall).toFixed(1)}`).join("");
+  const dots = points.map((p, i) => `<circle class="dot ${p.attempt_no > 1 ? "retry" : ""} ${p.comparable === false ? "faded" : ""}" cx="${x(i)}" cy="${y(p.overall)}" r="4.5"/>`).join("");
   const step = (W - L - R) / Math.max(1, n - 1);
   const hits = points.map((p, i) => `<rect class="hit" data-i="${i}" x="${x(i) - step / 2}" y="${T}" width="${Math.max(step, 12)}" height="${H - T - B}"/>`).join("");
   const first = new Date(points[0].date), last = new Date(points[n - 1].date);
@@ -627,7 +653,8 @@ function drawTrend(points) {
   el.querySelectorAll(".hit").forEach((h) => {
     h.onmousemove = (ev) => {
       const p = points[+h.dataset.i];
-      showTip(`<b>${p.overall}/100</b><br>${esc(p.mode)} · take ${p.attempt_no}<br>${new Date(p.date).toLocaleString()}`, ev);
+      showTip(`<b>${p.overall}/100</b><br>${esc(p.mode)} · take ${p.attempt_no}<br>${new Date(p.date).toLocaleString()}` +
+        (p.comparable === false ? `<br><i>Different scorer — not averaged</i>` : ""), ev);
     };
     h.onmouseleave = hideTip;
   });

@@ -219,6 +219,7 @@
             </div>
 
             <div class="metrics" id="metrics"></div>
+            <p id="provenanceLine" class="small muted prov-line"></p>
             <div id="fillerChips" class="chips small-chips"></div>
 
             <div id="reviewCard" class="rv hidden"></div>
@@ -328,7 +329,9 @@
       <div class="card">
         <div class="card-h">Overall score over time</div>
         <div id="trendChart" class="chart"></div>
-        <p class="muted small">Each dot is one take. Hollow dots are retries.</p>
+        <p class="muted small">Each dot is one take. Hollow dots are retries. Faded dots were scored by a different
+          scorer and aren't included in averages.</p>
+        <p id="scoringNote" class="small scoring-note hidden"></p>
       </div>
       <div class="card">
         <div class="card-h">Skills — last 10 vs previous 10</div>
