@@ -11,11 +11,12 @@ from .prompts import MODES, random_prompt
 log = logging.getLogger("thought_to_speak")
 
 
-def _dt(s: str) -> datetime:
+def _dt(s: str, tz=None) -> datetime:
+    """A stored UTC timestamp in the given timezone (the user's), or the server's zone if none is given."""
     d = datetime.fromisoformat(s)
     if d.tzinfo is None:
         d = d.replace(tzinfo=timezone.utc)
-    return d.astimezone()  # local time of the machine running the app
+    return d.astimezone(tz)
 
 
 def is_read_aloud(a: dict) -> bool:
@@ -236,11 +237,13 @@ def recommend(attempts: list[dict]) -> dict:
 
 
 # --------------------------------------------------------------------------- progress
-def progress(attempts: list[dict]) -> dict:
+def progress(attempts: list[dict], now: datetime | None = None) -> dict:
+    """`now` is timezone-aware in the user's timezone: practice days and the streak follow their calendar."""
     if not attempts:
         return {"total_attempts": 0, "recommendation": recommend([])}
-    days = sorted({_dt(a["created_at"]).date() for a in attempts})
-    today = datetime.now().astimezone().date()
+    now = now or datetime.now().astimezone()
+    days = sorted({_dt(a["created_at"], now.tzinfo).date() for a in attempts})
+    today = now.date()
     streak, d = 0, today if today in days else today - timedelta(days=1)
     dayset = set(days)
     while d in dayset:

@@ -86,5 +86,57 @@ Decisions
 
 Verification: 73 passed, 1 skipped (×5 runs, no flakes). Browser: one POST per take with key; reload recovered
 a queued job and rendered it.
-## Phase 4 — Maintainable boundaries ⏳
-## Phase 5 — Adaptive learning ⏳
+## Phase 4 — Maintainable boundaries ✅
+Decisions
+- Routers: `routes/{auth,practice,curriculum,progress}.py`; `routes/deps.py` holds the `Context` (store, curriculum,
+  service, runner, folders) stored on `app.state.ctx`, `current_user`, `user_store`, `user_tz`, `user_now`, and a
+  single patchable `CLOCK` seam for tests. `app.py` = composition root + lifespan (worker start/stop). Module-level
+  `store/service/runner/AUDIO_DIR/TMP_DIR` kept on `app` for tests and tooling.
+- Orchestration in `coach/service.py` (from Phase 3). Typed schemas in `coach/schemas.py`: requests, `JobOut`,
+  `UsageOut`, and `AnalysisResultCore`/`Focus`/`Provenance` checked by `check_result()` before any save (a broken
+  result fails the job and refunds quota).
+- AI output: `coach/provider_schema.py` validates every field before merge. Section objects are validated field by
+  field, list items one by one, scores individually (0–100), strings length-capped — one bad value drops only
+  itself. Counts reported in `analysis.provider_validation`.
+- Frontend: `static/js/` native ES modules, split mechanically with acorn by section + name overrides; exports and
+  imports derived from identifier references. `core.js` has no imports and every module imports it first, so it's
+  always initialised first (fixes TDZ in import cycles); `boot()` runs from `main.js` after all modules evaluate.
+  No module assigns to an imported binding (checked).
+- Timezone: progress practice days/streak take `now` in the user's zone; vocab-of-the-day and today's plan use the
+  user's date; quota stays UTC (documented).
+
+Verification: 79 passed, 1 skipped; browser smoke test over every tab (sign-in, learn, lesson, sprint, practice,
+review, retry/compare, pronounce popup, progress, history, account menu, theme) with no console errors.
+## Phase 5 — Adaptive learning ✅
+Decisions
+- `coach/adaptive.py` + `content/assessments.json` (3 baseline prompts, 20 held-out weekly prompts).
+- Skills = the five scored dimensions. Schedule per user in `meta["skills"]` (box, due date, last score,
+  reason). Leitner: intervals [1, 2, 4, 7, 14, 30]; ≥75 on/after due → +1 box; <60 any time → box 1; 60–74 → same box
+  rescheduled; ≥75 early → unchanged. First evidence places the skill (box 1/2/3 by score). Dates in user's tz.
+- `record_take()` runs after every saved, non-read-aloud take (in `AnalysisService.run`).
+- Baseline: `kind="baseline"`, prompt must be a baseline prompt (validated); first take per item recorded in
+  `meta["baseline"]`; summary = per-skill averages, strongest/weakest.
+- Weekly: ISO week in the user's tz; assignment persisted in `meta["weekly:<week>"]`, chosen deterministically from
+  prompts the user hasn't answered or been assigned (hash of user + week). `kind="weekly"` must answer this week's
+  prompt (validated); the attempt stores `weekly_week`; history = first takes only (`attempt_no == 1`, first per
+  week), flagged `comparable` by scoring key. Test guarantees weekly prompts appear nowhere else in the app.
+- Today's plan: review slot = most overdue skill (lowest box, then lowest score) with the matching exercise;
+  otherwise the recommendation, which now refreshes when the weakest skill changes during the day.
+- UI: baseline card (until complete), Skill reviews card (box dots, due, reason), Weekly challenge card (history
+  bars, faded when scored differently), "Retained skill (weekly)" KPI in Progress.
+
+Verification: 87 passed, 1 skipped. Browser: baseline → practice → recorded (1/3), weekly challenge recorded,
+skill cards with reasons, retained-skill KPI; mobile layout checked.
+
+## Status & remaining limitations
+- Commits on the Mac: phase 1 `d7431b3`, phase 2 `882e662`, phase 3 `de46a2f`, phases 4–5 in the commit that follows
+  (v8.5 + v9).
+- Not verified here: a live AI-provider run (`RUN_LIVE_EVAL=1 pytest -m live`) and real-microphone Whisper
+  timestamps in a browser (covered by unit tests with synthetic word timings).
+- Single-process design: the worker pool lives in the app process — run one uvicorn worker. Moving to
+  Postgres/S3 or multiple processes needs a shared queue and quota store (the job/usage tables port directly).
+- Processing is at-least-once: an AI call can repeat after a crash mid-call (bounded by `JOB_MAX_TRIES`).
+- Daily quota resets at midnight UTC (plans, unlocks and streaks use the user's timezone).
+- Skill reviews treat scores from different scorers as one 0–100 scale; progress averages and comparisons do not.
+- The built-in scorer is keyword- and rule-based; the benchmark guards regressions, not absolute accuracy.
+- The Pronounce tab's word-level checks are estimates, not phoneme-level pronunciation assessment.

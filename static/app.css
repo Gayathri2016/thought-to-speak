@@ -526,3 +526,30 @@ details.more > .rv, details.more > .voice, details.more > .language { margin-top
 details.more > .metrics { margin-top: 12px; }
 details.more > #fillerChips { margin-bottom: 14px; }
 .hfocus { list-style: none; padding: 0; display: grid; gap: 4px; }
+
+/* adaptive learning (v9) */
+.baseline { margin-bottom: 18px; border-left: 4px solid var(--good); }
+.bl-items { display: grid; gap: 8px; margin-top: 12px; }
+.bl-item { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.bl-item p { margin: 2px 0 0; color: var(--ink-2); }
+.bl-item.done { background: var(--good-soft); border-color: var(--good); }
+.bl-item .ti-check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--prev); display: grid; place-items: center; font-size: 12px; }
+.bl-item.done .ti-check { background: var(--good); border-color: var(--good); color: #fff; }
+.adaptive-row { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; margin-bottom: 18px; }
+@media (max-width: 900px) { .adaptive-row { grid-template-columns: 1fr; } }
+.sk-list { display: grid; gap: 8px; }
+.sk { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.sk.due { border-color: var(--warn); background: var(--warn-soft); }
+.sk-h { display: flex; justify-content: space-between; gap: 8px; }
+.sk-h .due { color: var(--warn); font-weight: 700; }
+.sk-box { display: flex; gap: 4px; align-items: center; margin: 4px 0 2px; }
+.sk-box i { width: 14px; height: 6px; border-radius: 3px; background: var(--line); }
+.sk-box i.on { background: var(--accent); }
+.sk-box span { margin-left: 6px; }
+.sk-why { line-height: 1.4; }
+.sk-base { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; }
+.wk-prompt { font-weight: 650; font-size: 15px; margin: 0 0 10px; }
+.wk-hist { display: flex; gap: 4px; align-items: flex-end; height: 48px; margin-top: 12px; }
+.wk-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.wk-bar span { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; }
+.wk-bar.faded span { opacity: .3; }

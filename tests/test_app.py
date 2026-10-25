@@ -445,7 +445,7 @@ def test_single_user_mode_needs_no_sign_in(tmp_path, monkeypatch):
 
 
 def test_app_files_are_revalidated_not_cached(anon):
-    for path in ("/", "/static/app.js", "/static/app.css"):
+    for path in ("/", "/static/js/main.js", "/static/js/results.js", "/static/app.css"):
         assert anon.get(path).headers["cache-control"] == "no-cache", path
 
 
@@ -507,8 +507,9 @@ def test_program_unlocks_one_day_per_calendar_day(client, monkeypatch):
     assert client.get("/api/today").json()["lessons_done"] == 0      # program days aren't journey lessons
 
     # the next morning, Day 2 is open and today's lesson slot points at it
-    tomorrow = datetime.now().astimezone() + timedelta(days=1)
-    monkeypatch.setattr(app_module, "user_now", lambda request: tomorrow)
+    from routes import deps
+    real = deps.CLOCK
+    monkeypatch.setattr(deps, "CLOCK", lambda tz=None: real(tz) + timedelta(days=1))
     st = client.get("/api/programs").json()[0]
     assert _days(st)[1]["status"] == "available" and st["current_day"] == 2 and st["streak"] == 1
     lesson_item = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "lesson")
@@ -1166,3 +1167,203 @@ def test_delete_account_removes_jobs_and_usage(tmp_path, monkeypatch):
     with app_module.store._conn() as conn:
         assert conn.execute("SELECT COUNT(*) FROM jobs WHERE user_id=?", (uid,)).fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM usage WHERE user_id=?", (uid,)).fetchone()[0] == 0
+
+
+# ----------------------------------------------------------------------------- v8.5: boundaries & timezones
+def test_streak_and_practice_days_follow_the_users_timezone():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from coach import insights
+    takes = [{"id": f"t{i}", "chain_id": f"c{i}", "attempt_no": 1, "kind": "free", "overall": None, "mode": "Interview",
+              "created_at": ts, "analysis": {}} for i, ts in enumerate(["2026-10-23T03:00:00+00:00",    # LA: Oct 22
+                                                                      "2026-10-23T23:00:00+00:00"])]  # LA: Oct 23
+    instant = datetime.fromisoformat("2026-10-23T23:30:00+00:00")
+    la = insights.progress(takes, now=instant.astimezone(ZoneInfo("America/Los_Angeles")))
+    utc = insights.progress(takes, now=instant.astimezone(ZoneInfo("UTC")))
+    assert (la["practice_days"], la["streak_days"]) == (2, 2)          # two different days in California
+    assert (utc["practice_days"], utc["streak_days"]) == (1, 1)        # the same day in UTC
+
+
+def test_daily_plan_date_uses_the_users_timezone(client):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    for zone in ("Pacific/Kiritimati", "Pacific/Pago_Pago", "America/Los_Angeles"):     # UTC+14 … UTC−11
+        r = client.get("/api/today", headers={"X-Timezone": zone}).json()
+        assert r["date"] == datetime.now(ZoneInfo(zone)).date().isoformat()
+    words_far_east = client.get("/api/vocab/today", headers={"X-Timezone": "Pacific/Kiritimati"}).json()
+    words_far_west = client.get("/api/vocab/today", headers={"X-Timezone": "Pacific/Pago_Pago"}).json()
+    assert len(words_far_east) == len(words_far_west) == 3
+
+
+def test_program_unlock_depends_on_the_users_calendar_day(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    cur = app_module.curriculum
+    pid = "speaking-sprint-28"
+    us.meta_set(cur.program_key(pid), {"started_at": "2026-10-20T00:00:00+00:00", "start_date": "2026-10-20",
+                                        "after_row": 0})
+    us.add_attempt(mode="Interview", prompt="p", transcript=STRONG, challenge_mode=False, duration_seconds=30,
+                   analysis={"overall_score": 80}, kind="lesson", lesson_id="ss01", lesson_passed=True,
+                   created_at="2026-10-23T23:30:00+00:00")                 # Day 1 passed
+    instant = datetime.fromisoformat("2026-10-24T01:00:00+00:00")
+    day2 = lambda zone: next(d for w in cur.program_state(us, pid, instant.astimezone(ZoneInfo(zone)))["weeks"]  # noqa: E731
+                             for d in w["days"] if d["day"] == 2)["status"]
+    assert day2("UTC") == "available"                  # passed "yesterday" (Oct 23) in UTC
+    assert day2("America/Los_Angeles") == "tomorrow"   # passed today (Oct 23) in California — opens tomorrow
+
+
+def test_invalid_ai_output_is_dropped_field_by_field(monkeypatch):
+    from coach import analysis, llm
+    raw = {"scores": {"structure": 250, "clarity": "high", "relevance": 70, "answer_quality": 71},
+           "strengths": ["Clear.", 42, "x" * 5000], "coaching_hint": {"not": "text"},
+           "review": {"evaluator": {"verdict": "brilliant", "summary": "Good."},
+                      "coach": {"fixes": [{"problem": "Late point.", "fix": "Lead."}, {"quote": "x"}],
+                                "drill": {"title": "T", "steps": []}},
+                      "mentor": "not an object"}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (raw, "anthropic:test"))
+    a = analysis.analyze(STRONG, "Interview", PROMPT)
+    assert a["provider_validation"]["dropped"] >= 5
+    assert a["provenance"]["scores"]["structure"] == "heuristic"      # out-of-range AI score never merged
+    assert a["scores"]["relevance"] == 70 and a["provenance"]["scores"]["relevance"] == "ai"
+    assert "Clear." in a["strengths"] and all(len(s) < 1000 for s in a["strengths"])
+    assert a["review"]["evaluator"]["verdict"] in ("strong_yes", "lean_yes", "lean_no", "no")
+    assert a["review"]["evaluator"]["summary"] == "Good."
+    assert [f["problem"] for f in a["review"]["coach"]["fixes"]] == ["Late point."]
+
+
+def test_broken_results_are_never_saved(tmp_path, monkeypatch):
+    from coach import analysis
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    real = analysis.analyze
+    monkeypatch.setattr(analysis, "analyze", lambda *a, **k: {**real(*a, **k), "overall_score": 140})
+    assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 500
+    assert c.get("/api/history").json() == [] and c.get("/api/usage").json()["used"] == 0
+
+
+def test_routes_are_split_into_routers():
+    import app as app_module
+    from routes import auth, curriculum, practice, progress
+    paths = set(app_module.app.openapi()["paths"])
+    for mod, sample in ((auth, "/api/auth/login"), (practice, "/api/jobs"), (curriculum, "/api/programs"),
+                        (progress, "/api/progress")):
+        assert sample in {r.path for r in mod.router.routes} and sample in paths
+
+
+# ----------------------------------------------------------------------------- v9: adaptive learning
+def test_leitner_schedule_is_simple_and_explainable():
+    from datetime import date, timedelta
+    from coach.adaptive import INTERVALS, update_skill
+    d0 = date(2026, 10, 1)
+    s, why = update_skill(None, 80, d0)
+    assert s["box"] == 2 and s["due"] == str(d0 + timedelta(days=INTERVALS[2])) and "box 3" in why
+    early, why = update_skill(s, 90, d0 + timedelta(days=1))                 # before due: no cramming credit
+    assert early["box"] == 2 and early["due"] == s["due"] and "before it was due" in why
+    up, why = update_skill(s, 78, date.fromisoformat(s["due"]))              # pass when due → up a box
+    assert up["box"] == 3 and "moved up to box 4" in why
+    stay, why = update_skill(up, 68, date.fromisoformat(up["due"]))          # partial → same box, rescheduled
+    assert stay["box"] == 3 and stay["due"] == str(date.fromisoformat(up["due"]) + timedelta(days=INTERVALS[3]))
+    down, why = update_skill(stay, 40, d0 + timedelta(days=3))               # fail any time → box 1, tomorrow
+    assert down["box"] == 0 and down["due"] == str(d0 + timedelta(days=4)) and "back to box 1" in why
+    top = {"box": len(INTERVALS) - 1, "due": "2026-10-01", "last_score": 90, "last_seen": "2026-09-01", "reviews": 9}
+    assert update_skill(top, 95, d0)[0]["box"] == len(INTERVALS) - 1     # capped at the last box
+
+
+def test_skill_reviews_drive_todays_plan(client, monkeypatch):
+    from datetime import timedelta
+    from routes import deps
+    client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT})
+    sk = client.get("/api/skills").json()
+    assert {s["skill"] for s in sk["skills"]} == {"structure", "clarity", "relevance", "answer_quality", "delivery"}
+    assert all(s["box"] and s["why"] for s in sk["skills"]) and "box" in sk["rule"]
+    assert sk["due"] == []                                                # nothing due on the day of practice
+    real = deps.CLOCK
+    monkeypatch.setattr(deps, "CLOCK", lambda tz=None: real(tz) + timedelta(days=1))
+    sk = client.get("/api/skills").json()
+    assert sk["due"], "weak skills (box 1) are due the next day"
+    review = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "review")
+    assert review["skill"] == sk["due"][0] and review["title"].startswith("Review ·") and "box 1" in review["detail"]
+
+
+def test_baseline_assessment(client):
+    from coach.adaptive import BASELINE
+    b = client.get("/api/baseline").json()
+    assert not b["complete"] and len(b["items"]) == 3 and b["summary"] is None
+    assert client.post("/api/analyze", json={"transcript": STRONG, "kind": "baseline",
+                                             "prompt": "Not a baseline prompt"}).status_code == 400
+    for item in BASELINE:
+        r = client.post("/api/analyze", json={"transcript": STRONG, "kind": "baseline", "prompt": item["prompt"],
+                                              "mode": item["mode"]})
+        assert r.status_code == 200 and r.json()["attempt"]["kind"] == "baseline"
+    b = client.get("/api/baseline").json()
+    assert b["complete"] and all(i["done"] for i in b["items"])
+    assert "starting point" in b["summary"]["text"] and set(b["summary"]["averages"]) >= {"structure", "delivery"}
+
+
+def test_weekly_challenge_is_unseen_stable_and_first_take_only(client, monkeypatch):
+    from datetime import timedelta
+    from coach.adaptive import WEEKLY_BANK
+    from routes import deps
+    w = client.get("/api/weekly").json()
+    assert w["prompt"] in {p["prompt"] for p in WEEKLY_BANK} and not w["done"]
+    assert client.get("/api/weekly").json()["prompt"] == w["prompt"]                # stable within the week
+    assert client.post("/api/analyze", json={"transcript": STRONG, "kind": "weekly",
+                                             "prompt": "some other prompt"}).status_code == 400
+    first = client.post("/api/analyze", json={"transcript": WEAK, "kind": "weekly", "prompt": w["prompt"],
+                                              "mode": w["mode"]}).json()
+    client.post("/api/analyze", json={"transcript": STRONG, "kind": "weekly", "prompt": w["prompt"],
+                                      "mode": w["mode"], "chain_id": first["attempt"]["chain_id"]})   # a retry
+    w2 = client.get("/api/weekly").json()
+    assert w2["done"] and w2["score"] == first["analysis"]["overall_score"]       # the retry doesn't count
+    assert len(w2["history"]) == 1 and client.get("/api/progress").json()["weekly"][0]["overall"] == w2["score"]
+    real = deps.CLOCK
+    monkeypatch.setattr(deps, "CLOCK", lambda tz=None: real(tz) + timedelta(days=7))
+    nxt = client.get("/api/weekly").json()
+    assert nxt["week"] != w["week"] and nxt["prompt"] != w["prompt"] and not nxt["done"]   # new, unseen prompt
+
+
+def test_weekly_prompts_never_appear_elsewhere():
+    from coach.adaptive import BASELINE, WEEKLY_BANK
+    from coach.curriculum import Curriculum
+    from coach.prompts import MODES
+    cur = Curriculum()
+    elsewhere = {p for m in MODES.values() for p in m["prompts"]}
+    elsewhere |= {p for lid in cur.lessons for p in cur.get(lid)["exercise"].get("prompts", [])}
+    elsewhere |= {b["prompt"] for b in BASELINE}
+    assert not elsewhere & {w["prompt"] for w in WEEKLY_BANK}
+    assert len({w["prompt"] for w in WEEKLY_BANK}) == len(WEEKLY_BANK) >= 12
+
+
+def test_week_boundary_uses_the_users_timezone():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from coach.adaptive import week_key
+    instant = datetime.fromisoformat("2026-10-26T05:00:00+00:00")       # Monday in UTC, Sunday night in LA
+    assert week_key(instant.astimezone(ZoneInfo("UTC"))) != week_key(instant.astimezone(ZoneInfo("America/Los_Angeles")))
+
+
+def test_adaptive_state_is_per_user(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    ada, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(ada, "ada@example.com")
+    _signup(bob, "bob@example.com")
+    ada.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT})
+    assert all(s["box"] for s in ada.get("/api/skills").json()["skills"])
+    assert all(s["status"] == "new" for s in bob.get("/api/skills").json()["skills"])
+    assert bob.get("/api/baseline").json()["items"][0]["done"] is False
+
+
+def test_todays_review_follows_new_evidence_within_the_day(client):
+    first = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "review")
+    assert "baseline" in first["title"].lower()
+    client.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT})
+    again = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "review")
+    assert "baseline" not in again["title"].lower() and "No full-scored" not in again["detail"]
+    stable = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "review")
+    assert stable["prompt"] == again["prompt"]                          # stable once refreshed

@@ -7,6 +7,7 @@ from . import language as lang
 from . import llm, metrics
 from . import pronunciation as pron
 from . import evidence
+from . import provider_schema
 from . import review as review_mod
 from . import scoring
 from .prompts import MODES, normalize_mode
@@ -525,11 +526,15 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     provider, warning = "local:heuristic", None
     digest = review_mod.history_digest(history or [])
     llm_review = None
+    provider_problems: list[str] = []
     dim_sources = {d: "heuristic" for d in scoring.CONTENT_DIMS}
 
     if llm.active_provider() != "local":
         try:
-            data, provider = _llm_feedback(text, mode, prompt, challenge, m, spec, voice, digest)
+            raw, provider = _llm_feedback(text, mode, prompt, challenge, m, spec, voice, digest)
+            data, provider_problems = provider_schema.validate_feedback(raw)   # typed check before any merge
+            if provider_problems:
+                log.info("Dropped %d invalid AI field(s): %s", len(provider_problems), provider_problems[:5])
             llm_review = data.get("review") if isinstance(data.get("review"), dict) else None
             for d in ("structure", "clarity", "relevance", "answer_quality"):
                 v = _clamp((data.get("scores") or {}).get(d))
@@ -593,6 +598,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         "language": language,
         "review": rv,
         "focus": focus,
+        "provider_validation": {"dropped": len(provider_problems), "problems": provider_problems[:10]},
         "provenance": scoring.provenance(
             dim_sources=dim_sources, kind="speech", provider=provider, spec=spec,
             transcript_source=scoring.normalize_transcript_source((voice or {}).get("transcript_source"), bool(voice)),

@@ -9,7 +9,7 @@ import random
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from . import insights
+from . import adaptive, insights
 from . import language as lang
 from . import pronunciation as pron
 from .prompts import MODES
@@ -275,7 +275,13 @@ class Curriculum:
             return any(a.get("kind") == kind and (lid is None or a.get("lesson_id") == lid) for a in todays)
 
         lesson_passed_today = any(a.get("lesson_id") == lesson_id and a.get("lesson_passed") for a in todays)
+        # The day's plan is cached so prompts stay stable, but the review target must follow new evidence:
+        # refresh it when the weakest skill (or "no takes yet") has changed since the plan was made.
+        fresh = insights.recommend(all_attempts)
         rec = plan["review"]
+        if (fresh.get("kind"), fresh.get("dimension")) != (rec.get("kind"), rec.get("dimension")):
+            rec = plan["review"] = fresh
+            store.meta_set(f"plan:{day}", plan)
         items = [
             {"key": "warmup", "kind": "warmup", "title": "Warm-up: 30-second impromptu",
              "detail": "No prep. Hit record and answer straight away — a fast start beats a perfect one.",
@@ -300,12 +306,25 @@ class Curriculum:
                 "detail": d["reason"], "mode": "Read aloud", "prompt": d["text"], "set": d["set"],
                 "minutes": 2, "done": done("read_aloud"),
             })
-        items.append({
-            "key": "review", "kind": "review", "title": f"Review: {rec['title']}",
-            "detail": rec.get("evidence") or rec.get("why", ""), "mode": rec["mode"], "prompt": rec["prompt"],
-            "constraint": rec.get("constraint"), "steps": rec.get("steps", []), "minutes": 4,
-            "challenge_mode": rec.get("challenge_mode", True), "done": done("review"),
-        })
+        due = adaptive.next_review(store, now)
+        if due:                                          # spaced review of the most overdue skill
+            ex = insights.EXERCISES[due["skill"]]
+            framework = " → ".join(MODES.get(rec["mode"], MODES["Interview"])["framework"])
+            items.append({
+                "key": "review", "kind": "review", "skill": due["skill"],
+                "title": f"Review · {due['label']}: {ex['title']}",
+                "detail": f"Due today (box {due['box']} of {due['boxes']}). {due['why']}",
+                "mode": rec["mode"], "prompt": rec["prompt"], "constraint": ex["constraint"],
+                "steps": [s.format(framework=framework) for s in ex["steps"]], "minutes": 4,
+                "challenge_mode": True, "done": done("review"),
+            })
+        else:
+            items.append({
+                "key": "review", "kind": "review", "title": f"Review: {rec['title']}",
+                "detail": rec.get("evidence") or rec.get("why", ""), "mode": rec["mode"], "prompt": rec["prompt"],
+                "constraint": rec.get("constraint"), "steps": rec.get("steps", []), "minutes": 4,
+                "challenge_mode": rec.get("challenge_mode", True), "done": done("review"),
+            })
         total_min = sum(i["minutes"] for i in items)
         words = [w for w in lang.word_bank() if w["word"] in (plan.get("words") or [])]
         used_today = {w for a in todays for w in ((a["analysis"].get("language") or {}).get("vocabulary") or {}).get("daily_used", [])}

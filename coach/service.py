@@ -13,10 +13,10 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from . import analysis, insights, language, transcribe
+from . import adaptive, analysis, insights, language, transcribe
 from . import audio as audio_mod
 from .prompts import normalize_mode
-from .schemas import AnalyzeRequest
+from .schemas import AnalyzeRequest, check_result
 
 MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", 25 * 1024 * 1024))
 MAX_AUDIO_SECONDS = float(os.getenv("MAX_AUDIO_SECONDS", 600))   # 10 minutes
@@ -51,6 +51,12 @@ class AnalysisService:
             raise InputError(400, "A read-aloud drill needs the sentence to read (target_text).")
         if not has_audio and len(req.transcript.split()) < self._min_words(req):
             raise InputError(400, "Speak or paste a response of at least a few words first.", "too_short")
+        if req.kind == "baseline" and req.prompt.strip() not in {b["prompt"] for b in adaptive.BASELINE}:
+            raise InputError(400, "Baseline takes must answer one of the baseline prompts.")
+        if req.kind == "weekly":
+            wk = adaptive.weekly_challenge(us, now, us.user_id)
+            if req.prompt.strip() != wk["prompt"]:
+                raise InputError(400, "The weekly challenge must answer this week's prompt.")
 
     @staticmethod
     def _min_words(req: AnalyzeRequest) -> int:
@@ -140,11 +146,14 @@ class AnalysisService:
             result = analysis.analyze(text, mode, req.prompt.strip(), req.challenge_mode, req.duration_seconds, spec,
                                       voice, words, daily, history)
             prompt = req.prompt.strip()
+        check_result(result)                              # typed invariants before anything is saved
         lesson_result = cur.evaluate(lesson, result) if lesson else None
         if lesson_result:
             result["lesson_result"] = lesson_result
         if not req.save:
             return {"analysis": result, "lesson_result": lesson_result, "attempt": None}
+        if kind == "weekly":
+            result["weekly_week"] = adaptive.week_key(now)  # the week this unseen challenge belongs to
 
         pid = lesson.get("program_id") if lesson else None
         if pid and not store.meta_get(cur.program_key(pid)):
@@ -162,6 +171,7 @@ class AnalysisService:
             if audio_name:                               # don't orphan the moved recording
                 (self.audio_dir / audio_name).unlink(missing_ok=True)
             raise
+        adaptive.record_take(store, rec, now)             # skill evidence → spaced-review schedule, baseline
         out = {"attempt": rec, "analysis": result, "comparison": None, "lesson_result": lesson_result}
         if pid:
             st = cur.program_state(store, pid, now)

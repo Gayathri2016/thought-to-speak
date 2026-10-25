@@ -1,5 +1,21 @@
 # Changelog
 
+## v9 — adaptive learning
+- 3-prompt baseline assessment for new users, with a starting-point summary.
+- Per-skill spaced reviews (Leitner boxes: 1, 2, 4, 7, 14, 30 days) with a plain-language reason for each skill;
+  today's session reviews the most overdue skill.
+- Unseen weekly challenge from a held-out prompt bank; only the first take counts, tracked as retained skill.
+- Today's review recommendation refreshes when new takes change the weakest skill.
+
+## v8.5 — maintainable boundaries
+- Routes split into `routes/auth|practice|curriculum|progress` with a shared app context; `app.py` is now only
+  the composition root (FastAPI lifespan starts/stops the worker).
+- Typed schemas for requests, job/usage responses and analysis-result invariants (checked before saving).
+- AI output is validated field by field against typed models before merging; invalid fields are dropped and counted.
+- Frontend split into native ES modules (`static/js/`: core, api, recording, results, curriculum, progress, auth,
+  main) — no build step.
+- The user's timezone is used consistently for daily plans, program unlocks, practice days and streaks.
+
 ## v8.4 — reliable analysis and usage accounting
 - Takes are processed as persistent jobs (queued → running → completed/failed) by an in-process worker pool;
   the page recovers a pending analysis after a refresh. Jobs interrupted by a restart are re-queued.

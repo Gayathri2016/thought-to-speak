@@ -36,7 +36,6 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .schemas import AnalyzeRequest
 from .service import InputError

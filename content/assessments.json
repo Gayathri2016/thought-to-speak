@@ -1,0 +1,33 @@
+{
+  "description": "Baseline assessment and the held-out weekly challenge bank. Weekly prompts are never used elsewhere in the app, so a weekly take measures retained skill on an unseen prompt.",
+  "baseline": [
+    {"key": "interview", "mode": "Interview", "title": "An interview answer",
+     "prompt": "Tell me about a time you had to learn something new quickly. What did you do?"},
+    {"key": "explain", "mode": "Technical Explanation", "title": "An explanation",
+     "prompt": "Explain something you know well to someone who has never heard of it."},
+    {"key": "impromptu", "mode": "Toastmasters", "title": "An impromptu talk",
+     "prompt": "What is a small change that made your work or life noticeably better?"}
+  ],
+  "weekly": [
+    {"mode": "Interview", "prompt": "Tell me about a decision you made with incomplete data. How did it turn out?"},
+    {"mode": "Interview", "prompt": "Describe a time you received critical feedback. What did you change?"},
+    {"mode": "Interview", "prompt": "Tell me about a time you had to influence someone without authority."},
+    {"mode": "Interview", "prompt": "Describe the most complex system you've worked on and your role in it."},
+    {"mode": "Leadership", "prompt": "Explain to your team why you're changing the sprint process starting next week."},
+    {"mode": "Leadership", "prompt": "Ask leadership for two more weeks on a project, and explain why it's worth it."},
+    {"mode": "Leadership", "prompt": "Announce that a popular tool is being retired and what replaces it."},
+    {"mode": "Technical Explanation", "prompt": "Explain how a search engine decides which results to show first."},
+    {"mode": "Technical Explanation", "prompt": "Explain what a database index is and when it doesn't help."},
+    {"mode": "Technical Explanation", "prompt": "Explain how two-factor authentication protects an account."},
+    {"mode": "Technical Explanation", "prompt": "Explain the difference between a process and a thread to a designer."},
+    {"mode": "Toastmasters", "prompt": "What is the best advice you've ignored, and why?"},
+    {"mode": "Toastmasters", "prompt": "Describe a place that changed how you think."},
+    {"mode": "Toastmasters", "prompt": "Is it better to be early or to be exactly on time?"},
+    {"mode": "Toastmasters", "prompt": "What would you teach a room full of ten-year-olds in five minutes?"},
+    {"mode": "FDE / Customer", "prompt": "A customer asks why your integration needs three weeks when a competitor promises one. Respond."},
+    {"mode": "FDE / Customer", "prompt": "A customer's pilot succeeded but their CFO is hesitant to expand. Make the case."},
+    {"mode": "FDE / Customer", "prompt": "A customer reports data looks wrong in your dashboard. Open the conversation."},
+    {"mode": "FDE / Customer", "prompt": "Explain to a customer why you recommend against the custom feature they asked for."},
+    {"mode": "Interview", "prompt": "What is something you believe about building software that many people disagree with?"}
+  ]
+}

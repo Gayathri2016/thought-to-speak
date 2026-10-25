@@ -65,6 +65,7 @@
   <!-- ============================== PRACTICE ============================== -->
   <section id="tab-learn" class="tabpanel">
     <div id="learnHome">
+      <div id="baselineCard"></div>
       <div id="programCard"></div>
       <div class="card today-card">
         <div class="row between wrap-row">
@@ -76,6 +77,10 @@
         </div>
         <div id="todayItems" class="today-items"></div>
         <div id="todayWords" class="today-words"></div>
+      </div>
+      <div class="adaptive-row">
+        <div id="skillsCard" class="card"></div>
+        <div id="weeklyCard" class="card"></div>
       </div>
       <div id="journeys"></div>
     </div>
@@ -393,6 +398,6 @@
 
 <div id="tooltip" class="tooltip hidden" role="tooltip"></div>
 <div id="wordPop" class="word-pop hidden" role="dialog" aria-label="Word pronunciation"></div>
-<script src="/static/app.js"></script>
+<script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

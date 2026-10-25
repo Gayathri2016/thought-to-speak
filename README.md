@@ -142,6 +142,8 @@ flowchart LR
 ```
 
 Design choices:
+- **Modular monolith.** One process, clear boundaries: thin routers → services → domain modules → storage.
+- **Your timezone.** The browser sends its IANA timezone; daily plans, program unlocks, practice days and streaks follow your calendar. The daily quota resets at midnight UTC.
 - **LLMs judge, code counts.** Fillers, hedges, pace, pauses and pitch are computed deterministically; the model
   only scores content. If the LLM call fails, you get local analysis instead of an error.
 - **Delivery = 40 % words + 60 % voice.**
@@ -152,30 +154,50 @@ Design choices:
   provider only if you configure one. Chrome's live transcript uses Google's speech service.
 
 ```
-app.py               FastAPI routes
-coach/analysis.py    heuristic + LLM analysis, Challenge Mode guard
-coach/review.py      evaluator / coach / mentor review and part-by-part breakdown
-coach/corrections.py sentence corrections: false starts, run-ons, fillers, grammar
-coach/service.py     analysis orchestration: validate → transcribe → measure → score → save (audio lifecycle)
-coach/jobs.py        persistent jobs, atomic quota reservation, idempotency, worker pool, restart recovery
-coach/schemas.py     typed request schemas
-coach/scoring.py     scoring provenance (versions, rubric fingerprint, transcript source) + compatibility rules
+app.py                 composition root: config, domain objects, routers, static files
+routes/auth.py         sign up / in / out, delete account
+routes/practice.py     analysis jobs (submit, poll), audio, prompts, config, usage
+routes/curriculum.py   journeys, lessons, today's plan, programs, pronunciation, word bank
+routes/progress.py     progress, recommendation, comparisons, history, export
+routes/deps.py         app context, signed-in user, user timezone + clock
+coach/service.py       analysis orchestration: validate → transcribe → measure → score → save (audio lifecycle)
+coach/jobs.py          persistent jobs, atomic quota reservation, idempotency, worker pool, restart recovery
+coach/schemas.py       typed request / response / result-invariant schemas
+coach/provider_schema.py  typed validation of AI output before it is merged
+coach/analysis.py      heuristic + LLM analysis, Challenge Mode guard
+coach/review.py        evaluator / coach / mentor review and part-by-part breakdown
+coach/evidence.py      quote verification against the transcript, Whisper timestamps, Challenge Mode redaction
+coach/corrections.py   sentence corrections: false starts, run-ons, fillers, grammar
+coach/scoring.py       scoring provenance (versions, rubric fingerprint, transcript source) + compatibility
+coach/audio.py         waveform analysis and voice scores (numpy)
+coach/transcribe.py    Whisper: OpenAI API or local faster-whisper
+coach/metrics.py       fillers, hedges, vague words, WPM
+coach/curriculum.py    journeys, programs, lesson pass checks, daily plan
+coach/pronunciation.py read-aloud alignment, likely sound swaps, stress & respelling
+coach/language.py      vocabulary, sentence structure, grammar checks, word bank
+coach/insights.py      retry comparison (cached narratives), progress, recommendation
+coach/storage.py       SQLite + additive migrations; per-user view (UserStore)
+coach/auth.py          passwords (scrypt), sessions, rate limits, quotas
+content/               journeys, programs, pronunciation drills, word bank, lexicon
+static/index.html      UI shell; static/app.css styles
+static/js/             native ES modules, no build step: core · api · recording · results · curriculum ·
+                       progress · auth · main (entry)
 scripts/eval_scoring.py  scoring benchmark (tests/benchmark/)
-coach/audio.py       waveform analysis and voice scores (numpy)
-coach/transcribe.py  Whisper: OpenAI API or local faster-whisper
-coach/metrics.py     fillers, hedges, vague words, WPM
-coach/curriculum.py  journeys, lesson pass checks, daily plan
-coach/pronunciation.py  read-aloud alignment, sound swaps, stress & respelling
-coach/language.py    vocabulary, sentence structure, grammar checks, word bank
-coach/insights.py    retry comparison, progress, recommendation
-coach/storage.py     SQLite + migrations; per-user view (UserStore)
-coach/auth.py        passwords (scrypt), sessions, rate limits, quotas
-content/journeys/    lessons (JSON) — one file per journey
-content/programs/    daily programs (JSON) — e.g. the 28-Day Speaking Sprint
-content/pronunciation.json, content/vocabulary.json, content/lexicon/  drills, word bank, CMU dictionary subset
-static/              UI — plain HTML/CSS/JS, no build step
-tests/               pytest
+tests/                 pytest
 ```
+
+## Adaptive learning
+
+- **Baseline (3 minutes).** New users answer three short prompts — an interview answer, an explanation and an
+  impromptu talk. They set the starting level for each skill.
+- **Skill reviews.** Every scored take is evidence for five skills (structure, clarity, relevance, substance,
+  delivery). Each skill sits in a Leitner box with reviews every 1, 2, 4, 7, 14 or 30 days:
+  score **75+ when it's due** → up a box; **under 60 any time** → back to box 1 (review tomorrow); 60–74 → same
+  box, rescheduled. Scoring 75+ before a skill is due doesn't move it (no credit for cramming). Each skill shows
+  the one-sentence reason for its current box. Today's session reviews the most overdue skill.
+- **Weekly challenge.** One prompt per week from a held-out bank used nowhere else in the app, never one you've
+  answered before. Only your first take counts, so the weekly score measures **retained skill** on an unseen
+  prompt — separate from how much a same-prompt retry helped. Progress shows it as "Retained skill (weekly)".
 
 ## Scoring you can trust
 
