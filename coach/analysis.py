@@ -6,6 +6,7 @@ from . import audio as audio_mod
 from . import language as lang
 from . import llm, metrics
 from . import pronunciation as pron
+from . import evidence
 from . import review as review_mod
 from . import scoring
 from .prompts import MODES, normalize_mode
@@ -477,6 +478,12 @@ def analyze_read_aloud(text: str, target: str, words: list[dict] | None = None, 
         "coaching_hint": ("Click each highlighted word to hear it, copy the stressed syllable, then read the sentence again."
                           if focus else "Clean read. Try the next sentence, or read this one 15% faster."),
         "coaching_questions": [], "suggested_outline": [], "structure_map": [],
+        "focus": {"strength": {"text": good[0] if good else "You read the whole sentence.", "quote": None,
+                               "start": None, "end": None},
+                  "priority": {"text": fix[0] if fix else "Every word came through clearly.", "quote": None,
+                               "start": None, "end": None, "why": None},
+                  "retry": (f"Practise {', '.join(focus)} on their own, then read the sentence again."
+                            if focus else "Read the next sentence in this set.")},
         "next_challenge": f"Practise these words in isolation, then in the sentence: {', '.join(focus)}." if focus
         else "Move to the next sentence in this set.",
         "voice": ({**voice, "scores": voice_scores} if voice else None), "challenge_mode": False,
@@ -567,6 +574,8 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
 
     rv = review_mod.local_review(text, mode, spec, m, scores, FRAMEWORK_CUES, history)
     rv = review_mod.merge_llm_review(rv, llm_review, challenge, mode)
+    rv = evidence.validate_review(rv, text, words, challenge)   # quotes must be in the transcript
+    focus = evidence.focus(rv, fb, tuple(spec["target_seconds"]))
 
     overall = overall_from(scores)
     return {
@@ -583,6 +592,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
         "voice": ({**voice, "scores": voice_scores} if voice else None),
         "language": language,
         "review": rv,
+        "focus": focus,
         "provenance": scoring.provenance(
             dim_sources=dim_sources, kind="speech", provider=provider, spec=spec,
             transcript_source=scoring.normalize_transcript_source((voice or {}).get("transcript_source"), bool(voice)),

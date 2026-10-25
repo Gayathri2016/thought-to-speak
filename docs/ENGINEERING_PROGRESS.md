@@ -37,7 +37,26 @@ Decisions
 Verification: 54 passed, 1 skipped (live). UI checked at 1280px and 390px (badges, provenance line,
 incompatible comparison, faded trend + note).
 
-## Phase 2 — Focused, actionable feedback ⏳
+## Phase 2 — Focused, actionable feedback ✅
+**What:** the results open on three things — Keep doing / Fix first / On your retry — with everything else in
+expandable sections (Full review, Your voice, Words & sentences, Measurements; open state remembered per browser).
+
+Decisions
+- `coach/evidence.py`: every quote in the review (landed, doubts, fixes, breakdown parts, corrections) is located in
+  the transcript — exact, truncated prefix ("…"), or a ≥0.88 character-similar window — and replaced with the
+  speaker's verbatim words. Near-matches are rejected if they change a pronoun (I/we → ownership) or add/remove a
+  negation (agreed/disagreed, not). Unverifiable quotes are dropped (praise items removed entirely; critique items
+  keep the point without a quote; corrections removed) and counted in `review.evidence.dropped`.
+- Timestamps only from Whisper word timings, and only when the quote's tokens appear in those timings in order;
+  otherwise `start/end = null`. Browser transcripts never get timestamps. ▶ chips seek the recording.
+- `focus` = first verified "landed" item (else strength) · first coach fix's problem (else first quoted doubt) ·
+  that fix as the retry instruction + target length. Read-aloud drills get a focus from pronunciation feedback.
+- Challenge Mode: quoted wording not found in the transcript (i.e. suggested replacements) is redacted to
+  "[your own wording]" in fixes, game plan, verdict tips and correction notes; corrected sentences, the corrected
+  answer and the stronger version are always null.
+- Pronunciation copy reworded: "words recognised", "likely sound swap", explicitly word-level not phoneme-level.
+
+Verification: 60 passed, 1 skipped. UI checked at 1280px and 390px (focus card, ▶ chips, collapsed sections).
 ## Phase 3 — Reliable analysis & usage accounting ⏳
 ## Phase 4 — Maintainable boundaries ⏳
 ## Phase 5 — Adaptive learning ⏳

@@ -218,12 +218,34 @@
               <div class="dims" id="dims"></div>
             </div>
 
-            <div class="metrics" id="metrics"></div>
-            <p id="provenanceLine" class="small muted prov-line"></p>
-            <div id="fillerChips" class="chips small-chips"></div>
+            <div id="focusCard" class="focus hidden" aria-live="polite"></div>
 
+            <details class="more" id="moreReview" data-key="review">
+              <summary>📋 Full review <span class="small muted">interviewer · corrections · part by part · coach · mentor</span></summary>
             <div id="reviewCard" class="rv hidden"></div>
+            <div class="split" id="legacyFeedback">
+              <div><h3>✅ What worked</h3><ul id="strengths"></ul></div>
+              <div><h3>🎯 What to improve</h3><ul id="improvements"></ul></div>
+            </div>
 
+            <div id="structureWrap">
+              <h3>🧱 Structure check</h3>
+              <div id="structureMap" class="smap"></div>
+            </div>
+
+            <div id="coachBox" class="coach">
+              <div class="coach-h" id="coachTitle">Coach</div>
+              <p id="coachHint"></p>
+              <ol id="coachQuestions"></ol>
+              <div id="outlineWrap" class="hidden">
+                <div class="eyebrow">Skeleton built from your own words</div>
+                <ul id="outline"></ul>
+              </div>
+            </div>
+            </details>
+
+            <details class="more" id="moreVoice" data-key="voice">
+              <summary>🎧 Your voice <span class="small muted">pauses, pace, pitch and volume from the recording</span></summary>
             <div id="voiceCard" class="voice hidden">
               <div class="row between wrap-row">
                 <h3 style="margin:0">🎧 Your voice <span class="small muted">— measured from the recording</span></h3>
@@ -246,31 +268,22 @@
               <p id="voiceSummary" class="small"></p>
               <p id="voiceQuality" class="warn hidden"></p>
             </div>
+            </details>
 
+            <details class="more" id="moreLanguage" data-key="language">
+              <summary>📝 Words &amp; sentences <span class="small muted">vocabulary, sentence length, grammar</span></summary>
             <div id="languageCard" class="language hidden"></div>
+            </details>
 
-            <div class="split" id="legacyFeedback">
-              <div><h3>✅ What worked</h3><ul id="strengths"></ul></div>
-              <div><h3>🎯 What to improve</h3><ul id="improvements"></ul></div>
-            </div>
-
-            <div id="structureWrap">
-              <h3>🧱 Structure check</h3>
-              <div id="structureMap" class="smap"></div>
-            </div>
-
-            <div id="coachBox" class="coach">
-              <div class="coach-h" id="coachTitle">Coach</div>
-              <p id="coachHint"></p>
-              <ol id="coachQuestions"></ol>
-              <div id="outlineWrap" class="hidden">
-                <div class="eyebrow">Skeleton built from your own words</div>
-                <ul id="outline"></ul>
-              </div>
-            </div>
+            <details class="more" id="moreMeasure" data-key="measure">
+              <summary>📏 Measurements <span class="small muted">counts, timing, and how this take was scored</span></summary>
+            <div class="metrics" id="metrics"></div>
+            <p id="provenanceLine" class="small muted prov-line"></p>
+            <div id="fillerChips" class="chips small-chips"></div>
+            </details>
 
             <div class="next">
-              <span class="eyebrow">Next challenge</span>
+              <span class="eyebrow" id="nextLabel">Next challenge</span>
               <p id="nextChallenge"></p>
               <div class="row gap-s wrap-row">
                 <button id="retryBtn" class="primary">🔁 Retry this prompt</button>

@@ -329,6 +329,8 @@ async function analyze() {
     renderPronunciation(r.analysis);
     renderLanguage(r.analysis);
     renderLessonResult(r.lesson_result, r.program);
+    renderFocus(r.analysis);
+    syncMore();
     if (r.comparison) renderComparison(r.comparison, r.attempt.chain_id);
     else $("compareCard").classList.add("hidden");
     $("status").textContent = r.attempt.attempt_no > 1 ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
@@ -357,7 +359,7 @@ function renderAnalysis(a) {
   $("results").classList.toggle("read-aloud", ra);
   if (ra) {
     const p = a.pronunciation;
-    $("dims").innerHTML = [["Words clear", p.accuracy], ["Delivery", a.delivery_score]].map(([l, v]) => `
+    $("dims").innerHTML = [["Words recognised", p.accuracy], ["Delivery", a.delivery_score]].map(([l, v]) => `
       <div class="dim"><span>${l}</span><div class="dim-bar"><div style="width:${v}%"></div></div><b>${v}</b></div>`).join("") +
       `<p class="small muted" style="margin:4px 0 0">${p.correct} of ${p.total} words came through cleanly${p.has_confidence ? "" : " · word confidence needs local Whisper"}</p>`;
     const m = a.metrics;
@@ -385,6 +387,50 @@ function renderAnalysis(a) {
   $("provenanceLine").innerHTML = provenanceLine(pv);
   finishAnalysis(a);
 }
+
+/* ------------------------------------------------------------------ focused results (v8.3) */
+const fmtTs = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+function evidenceHtml(x) {
+  if (!x || !x.quote) return "";
+  const ts = x.start != null ? ` <button class="ts" data-t="${x.start}" title="Play this moment">▶ ${fmtTs(x.start)}</button>` : "";
+  return `<p class="fc-quote"><q>${esc(x.quote)}</q>${ts}</p>`;
+}
+function renderFocus(a) {
+  const el = $("focusCard"), f = a.focus;
+  if (!f) { el.classList.add("hidden"); el.innerHTML = ""; $("nextChallenge").classList.remove("hidden");
+    $("retryBtn").classList.remove("hidden"); return; }
+  $("retryBtn").classList.add("hidden");          // "Retry now" in the focus card is the one retry button
+  el.classList.remove("hidden");
+  el.innerHTML = `
+    <div class="fc-row good"><span class="fc-ico" aria-hidden="true">✓</span><div>
+      <span class="eyebrow">Keep doing</span><p>${esc(f.strength.text)}</p>${evidenceHtml(f.strength)}</div></div>
+    <div class="fc-row pri"><span class="fc-ico" aria-hidden="true">!</span><div>
+      <span class="eyebrow">Fix first</span><p><b>${esc(f.priority.text)}</b></p>${evidenceHtml(f.priority)}</div></div>
+    <div class="fc-row retry"><span class="fc-ico" aria-hidden="true">↻</span><div>
+      <span class="eyebrow">On your retry</span><p>${esc(f.retry)}</p>
+      <button class="primary sm" id="fcRetry">🔁 Retry now</button></div></div>`;
+  $("fcRetry").onclick = () => { startRetry(); $("status").textContent = `Focus: ${f.retry}`; };
+  // the retry instruction replaces the generic "next challenge" text; the buttons below stay
+  $("nextChallenge").classList.add("hidden"); $("nextLabel").textContent = "Keep going";
+}
+// ▶ timestamp chips anywhere in the results jump the recording to that moment
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".ts[data-t]");
+  if (!b) return;
+  const player = $("player");
+  if (!player.src) return;
+  $("moreVoice").open = true;
+  player.currentTime = +b.dataset.t; player.play().catch(() => {});
+});
+function syncMore() {
+  const hasContent = { moreVoice: !$("voiceCard").classList.contains("hidden"),
+    moreLanguage: !$("languageCard").classList.contains("hidden") };
+  Object.entries(hasContent).forEach(([id, on]) => $(id).classList.toggle("hidden", !on));
+}
+document.querySelectorAll("details.more").forEach((d) => {
+  try { d.open = localStorage.getItem(`tts-more-${d.dataset.key}`) === "1"; } catch (_) {}
+  d.addEventListener("toggle", () => { try { localStorage.setItem(`tts-more-${d.dataset.key}`, d.open ? "1" : "0"); } catch (_) {} });
+});
 
 /* ------------------------------------------------------------------ scoring provenance (v8.2) */
 function provBadge(src, dim) {
@@ -432,8 +478,9 @@ function renderReview(a) {
   legacy.forEach((id) => $(id).classList.add("hidden"));
   const ev = r.evaluator, co = r.coach, me = r.mentor, parts = r.breakdown?.parts || [];
   const q = (x) => x ? `<q>${esc(x)}</q>` : "";
+  const tsb = (x) => x && x.start != null ? ` <button class="ts" data-t="${x.start}" title="Play this moment">▶ ${fmtTs(x.start)}</button>` : "";
   const quoteList = (xs, empty) => xs.length ? `<ul class="rv-quotes">${xs.map((x) =>
-    `<li>${x.quote ? `${q(x.quote)}<br>` : ""}<span>${esc(x.why)}</span></li>`).join("")}</ul>` : `<p class="small muted">${empty}</p>`;
+    `<li>${x.quote ? `${q(x.quote)}${tsb(x)}<br>` : ""}<span>${esc(x.why)}</span></li>`).join("")}</ul>` : `<p class="small muted">${empty}</p>`;
   const icon = { present: "✓", weak: "~", missing: "✗" };
   const outline = a.suggested_outline || [];
   el.classList.remove("hidden");
@@ -459,14 +506,14 @@ function renderReview(a) {
       <div class="rv-h"><span class="rv-who">🧱 Your answer, part by part</span><span class="small muted">${esc(a.framework_name)}</span></div>
       <div class="rv-parts">${parts.map((p) => `<div class="rv-part ${esc(p.status)}">
         <span class="ico" aria-label="${esc(p.status)}">${icon[p.status] || "~"}</span><b>${esc(p.label)}</b>
-        <span>${p.quote ? q(p.quote) : `<span class="muted">Not in your answer</span>`}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ""}</span></div>`).join("")}</div>
+        <span>${p.quote ? q(p.quote) + tsb(p) : `<span class="muted">${p.status === "weak" ? "Unclear — couldn't match a sentence" : "Not in your answer"}</span>`}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ""}</span></div>`).join("")}</div>
       ${r.breakdown?.order_note ? `<p class="small rv-note">↕ ${esc(r.breakdown.order_note)}</p>` : ""}
     </section>
 
     <section class="rv-sec rv-coach">
       <div class="rv-h"><span class="rv-who">🏋️ Coach</span><span class="small muted">${a.challenge_mode ? "Challenge Mode — find the fix yourself" : "before your next take"}</span></div>
       ${co.fixes?.length ? `<div class="eyebrow">Top fixes</div><ol class="rv-fixes">${co.fixes.map((f) => `<li>
-        ${f.quote ? `<span class="small muted">You said</span> ${q(f.quote)}<br>` : ""}<b>${esc(f.problem)}</b><br><span>→ ${esc(f.fix)}</span></li>`).join("")}</ol>` : ""}
+        ${f.quote ? `<span class="small muted">You said</span> ${q(f.quote)}${tsb(f)}<br>` : ""}<b>${esc(f.problem)}</b><br><span>→ ${esc(f.fix)}</span></li>`).join("")}</ol>` : ""}
       ${a.challenge_mode && a.coaching_questions?.length ? `<div class="eyebrow">Ask yourself</div><ul class="small">${a.coaching_questions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       ${co.do_next?.length ? `<div class="eyebrow">On your next take</div><ul class="rv-next">${co.do_next.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       <div class="rv-actions"><button class="primary sm" id="rvRetry">🔁 Retry with these fixes</button></div>
@@ -488,7 +535,8 @@ function renderReview(a) {
       <p><b>This week's habit:</b> ${esc(me.habit)}</p>
       ${me.note ? `<p class="small muted">${esc(me.note)}</p>` : ""}
     </section>
-    <p class="small muted rv-src">${r.source === "ai" ? "Review written by your AI coach, quoting your own words." : "Review from the built-in coach — add an API key for deeper, AI-written feedback."}</p>`;
+    <p class="small muted rv-src">${r.source === "ai" ? "Review written by your AI coach." : "Review from the built-in coach — add an API key for deeper, AI-written feedback."}
+      Every quote was checked against your transcript${r.evidence?.dropped ? ` (${r.evidence.dropped} unverifiable quote${r.evidence.dropped > 1 ? "s" : ""} removed)` : ""}${r.evidence?.timestamps ? "; ▶ times come from Whisper's word timings" : ""}.</p>`;
   $("rvFollow").onclick = () => {
     state.chainId = null; state.takeNo = 1;
     practiceWith({ mode: a.mode in state.modes ? a.mode : state.mode, prompt: ev.follow_up });
@@ -510,7 +558,7 @@ function renderCorrections(c, challenge) {
   return `<section class="rv-sec rv-fix">
     <div class="rv-h"><span class="rv-who">✍️ Corrections</span><span class="small muted">${challenge ? "find the fix yourself" : "what you said → how to say it"}</span></div>
     <ol class="rv-corr">${items.map((x) => `<li>
-      <div class="rv-said"><span class="eyebrow">You said</span><q>${esc(x.original)}</q></div>
+      <div class="rv-said"><span class="eyebrow">You said</span><span><q>${esc(x.original)}</q>${x.start != null ? ` <button class="ts" data-t="${x.start}">▶ ${fmtTs(x.start)}</button>` : ""}</span></div>
       ${x.corrected ? `<div class="rv-better"><span class="eyebrow">Say</span><span>${esc(x.corrected)}</span></div>` : ""}
       ${(x.changes || []).length || (x.notes || []).length ? `<ul class="rv-why">${[...(x.changes || []), ...(x.notes || [])]
         .map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ol>
@@ -723,8 +771,10 @@ function historyAttempt(t) {
       ${t.audio_path ? `<audio controls preload="none" src="/api/audio/${esc(t.id)}" style="width:100%;height:34px"></audio>` : ""}
       ${a.voice ? `<p class="small muted">${esc(voiceSummary(a.voice))}</p>` : ""}
       ${dims ? `<p class="small">${dims}</p>` : ""}
-      <div class="split"><div><h3>What worked</h3><ul class="small">${li(a.strengths)}</ul></div>
-      <div><h3>What to improve</h3><ul class="small">${li(a.improvements)}</ul></div></div>
+      ${a.focus ? `<ul class="small hfocus"><li>✓ ${esc(a.focus.strength.text)}</li><li><b>! ${esc(a.focus.priority.text)}</b></li>
+        <li>↻ ${esc(a.focus.retry)}</li></ul>` : `<div class="split"><div><h3>What worked</h3><ul class="small">${li(a.strengths)}</ul></div>
+      <div><h3>What to improve</h3><ul class="small">${li(a.improvements)}</ul></div></div>`}
+      ${t.scoring_version ? `<p class="small muted">Scored: ${esc(t.scoring_version)}${t.model ? ` · ${esc(t.model)}` : ""}</p>` : ""}
       <p style="margin-top:12px"><button class="danger" data-del="${esc(t.id)}">Delete take</button></p>
     </div></details>`;
 }
@@ -1146,7 +1196,7 @@ function renderPronunciation(a) {
         <td><button class="ghost sm" data-say="${esc(w.word)}">▶</button></td></tr>`).join("")}</table>`
       : `<p class="small">Every word came through clearly. 🎉</p>`}
     ${p.extra_words.length ? `<p class="small muted">Extra words heard: ${p.extra_words.map(esc).join(", ")}</p>` : ""}
-    <p class="small muted">Measured by comparing what the recognizer heard with the sentence. ${p.has_confidence ? "" : "Turn on local Whisper to also flag unclear words."}</p>`;
+    <p class="small muted">Estimated from which words the speech recognizer heard — a word-level check, not a phoneme-level measurement. Sound labels (e.g. “th → s”) are the likely swap based on the dictionary spelling of the two words. ${p.has_confidence ? "" : "Turn on local Whisper to also flag unclear words."}</p>`;
   el.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => speak(b.dataset.say, 0.8)));
 }
 
@@ -1255,15 +1305,15 @@ function renderSet(st) {
 
 function renderSoundSummary(lp) {
   const sounds = Object.entries(lp.sounds || {});
-  $("soundSummary").innerHTML = sounds.length ? `<div class="eyebrow">Your sounds</div>` + sounds.sort((a, b) => a[1].accuracy - b[1].accuracy)
+  $("soundSummary").innerHTML = sounds.length ? `<div class="eyebrow">Sound groups — words recognised (estimate)</div>` + sounds.sort((a, b) => a[1].accuracy - b[1].accuracy)
     .map(([g, v]) => `<div class="fbar"><span>${esc(g)}</span><div class="t"><div style="width:${v.accuracy}%;${v.accuracy < 85 ? "background:var(--bad)" : ""}"></div></div><b>${v.accuracy}%</b></div>`).join("")
-    : `<span class="small muted">Sound accuracy appears after a few drills.</span>`;
+    : `<span class="small muted">Sound-group results appear after a few drills.</span>`;
 }
 
 function renderLangProgress(lp) {
   if (!lp) { $("langProgress").innerHTML = ""; return; }
   const k = [[lp.vocabulary_avg, "Vocabulary (last 10)"], [lp.sentences_avg, "Sentence structure (last 10)"],
-    [lp.pronunciation_avg, "Pronunciation accuracy (last 10 drills)"], [(lp.words_used || []).length, "Daily words you've used"]];
+    [lp.pronunciation_avg, "Words recognised in drills (last 10, %)"], [(lp.words_used || []).length, "Daily words you've used"]];
   $("langProgress").innerHTML = `
     <div class="card">
       <div class="card-h">🗣️ Language skills</div>

@@ -499,3 +499,30 @@ body.signed-out .top, body.signed-out #appMain { display: none; }
 .scoring-note { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; }
 .cmp-warn { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; }
 .verdict.incompatible { background: var(--warn-soft); color: var(--warn); }
+
+/* focused results (v8.3) */
+.focus { display: grid; gap: 10px; margin: 14px 0 12px; }
+.fc-row { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+.fc-row p { margin: 3px 0 0; font-size: 14.5px; }
+.fc-ico { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #fff; }
+.fc-row.good { border-left: 4px solid var(--good); } .fc-row.good .fc-ico { background: var(--good); }
+.fc-row.pri { border-left: 4px solid var(--warn); } .fc-row.pri .fc-ico { background: var(--warn); }
+.fc-row.retry { border-left: 4px solid var(--accent); background: var(--accent-soft); } .fc-row.retry .fc-ico { background: var(--accent); }
+.fc-row.retry button { margin-top: 8px; }
+.fc-quote { font-size: 13.5px !important; color: var(--ink-2); }
+.fc-quote q, .rv q { font-style: italic; }
+.fc-quote q::before { content: "“"; } .fc-quote q::after { content: "”"; }
+button.ts { padding: 1px 7px; font-size: 11.5px; font-weight: 700; border-radius: 99px; background: var(--surface-2); color: var(--accent-strong); border: 1px solid var(--line); margin-left: 4px; vertical-align: 1px; }
+button.ts:hover { border-color: var(--accent); }
+details.more { border: 1px solid var(--line); border-radius: 12px; margin: 10px 0; background: var(--surface); }
+details.more > summary { cursor: pointer; padding: 11px 14px; font-weight: 700; font-size: 14.5px; list-style: none; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; display: inline-block; }
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary span { font-weight: 500; }
+details.more[open] > summary { border-bottom: 1px solid var(--line); }
+details.more > :not(summary) { margin-left: 14px; margin-right: 14px; }
+details.more > .rv, details.more > .voice, details.more > .language { margin-top: 12px; margin-bottom: 14px; }
+details.more > .metrics { margin-top: 12px; }
+details.more > #fillerChips { margin-bottom: 14px; }
+.hfocus { list-style: none; padding: 0; display: grid; gap: 4px; }

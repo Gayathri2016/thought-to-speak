@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.3 — focused, evidenced feedback
+- Results open on one strength, one priority fix and one retry instruction; the full review, voice, language and
+  measurements are in expandable sections.
+- Every quote is checked against your transcript (verbatim words only; meaning-changing near-matches rejected);
+  ▶ timestamps appear only when Whisper measured them.
+- Challenge Mode redacts any suggested replacement wording.
+- Pronunciation results are labelled as word-level estimates, not phoneme-level measurements.
+
 ## v8.2 — trustworthy scoring
 - Each take stores its scoring version, score basis (AI / built-in / mixed), model, rubric fingerprint and
   transcript source. Older takes are migrated in place as "legacy" without changing their stored analysis.

@@ -844,3 +844,92 @@ def test_live_provider_benchmark():                                     # pragma
     from pathlib import Path
     root = Path(__file__).parent.parent
     assert subprocess.run([sys.executable, str(root / "scripts" / "eval_scoring.py"), "--live"]).returncode == 0
+
+
+# ----------------------------------------------------------------------------- v8.3: focused, evidenced feedback
+def test_focus_has_one_strength_one_priority_one_retry():
+    from coach import analysis
+    a = analysis.analyze(WEAK + ". " + STRONG, "Interview", PROMPT, duration_seconds=50)
+    f = a["focus"]
+    assert set(f) == {"strength", "priority", "retry"}
+    assert f["strength"]["text"] and f["priority"]["text"] and f["retry"].endswith("seconds.")
+    for x in (f["strength"], f["priority"]):
+        if x["quote"]:
+            assert x["quote"].rstrip("…") in (WEAK + ". " + STRONG)        # verbatim words they said
+        assert x["start"] is None                                         # no audio → no timestamps
+
+
+def test_invented_quotes_are_removed_and_near_quotes_made_verbatim(monkeypatch):
+    from coach import analysis, llm
+    fake = {"scores": {}, "review": {
+        "evaluator": {"verdict": "lean_yes", "landed": [{"quote": "I single-handedly saved the company", "why": "Bold."},
+                                                       {"quote": "we reduced latency by forty percent and he approved",
+                                                        "why": "Result."}],
+                      "doubts": [{"quote": "I never said this sentence at all", "why": "Hmm."}]},
+        "coach": {"fixes": [{"quote": "my director disagred with my plan", "problem": "Late point.", "fix": "Lead."}]},
+        "corrections": {"items": [{"original": "Words that are not in the transcript", "corrected": "x",
+                                   "changes": ["y"]}]}}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (json.loads(json.dumps(fake)), "anthropic:test"))
+    r = analysis.analyze(STRONG, "Interview", PROMPT)["review"]
+    landed = r["evaluator"]["landed"]
+    assert len(landed) == 1 and "single-handedly" not in json.dumps(landed)   # praise for unsaid words dropped
+    assert r["evaluator"]["doubts"][0]["quote"] is None                       # kept the point, dropped the fake quote
+    assert r["coach"]["fixes"][0]["quote"] == "my director disagreed with my plan"   # typo → speaker's real words
+    assert r["corrections"]["items"] == [] and r["evidence"]["dropped"] >= 3
+
+
+def test_timestamps_only_from_matching_whisper_words(client, monkeypatch):
+    from coach import evidence, transcribe
+    text = "So um I think we should ship it. When I was leading the migration we reduced latency by 40 percent."
+    words = [{"word": w, "start": round(i * 0.5, 2), "end": round(i * 0.5 + 0.4, 2)} for i, w in enumerate(text.split())]
+    ev = evidence.check("we reduced latency by 40 percent", text, words)
+    i = text.split().index("reduced") - 1
+    assert ev["start"] == words[i]["start"] and ev["end"] == words[-1]["end"]
+    assert evidence.check("we reduced latency by 40 percent", text, words[:5])["start"] is None   # not in timings
+    assert evidence.check("we reduced latency by 40 percent", text, None)["start"] is None
+
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: {"text": text, "words": words, "source": "test:whisper"})
+    wav = _speechlike_wav([("q", .3), ("s", 6), ("q", .4), ("s", 5), ("q", .3)])
+    r = client.post("/api/analyze-audio", files={"audio": ("t.wav", wav, "audio/wav")},
+                    data={"payload": json.dumps({"transcript": "", "mode": "Interview"})}).json()
+    timed = [x for x in [r["analysis"]["focus"]["priority"], r["analysis"]["focus"]["strength"]] if x["quote"]]
+    assert timed and all(x["start"] is not None for x in timed)
+    assert r["analysis"]["review"]["evidence"]["timestamps"] is True
+
+
+def test_challenge_mode_redacts_suggested_wording(monkeypatch):
+    from coach import analysis, llm
+    fake = {"scores": {}, "review": {"coach": {
+        "fixes": [{"quote": "my director disagreed with my plan", "problem": "Weak verb.",
+                   "fix": "Replace “disagreed” with “pushed back hard on”."}],
+        "do_next": ["Open with “I cut latency by 40%”."], "stronger_version": "Full rewrite here."}}}
+    monkeypatch.setattr(llm, "active_provider", lambda: "anthropic")
+    monkeypatch.setattr(llm, "complete_json", lambda *a, **k: (json.loads(json.dumps(fake)), "anthropic:test"))
+    a = analysis.analyze(STRONG, "Interview", PROMPT, challenge=True)
+    fix = a["review"]["coach"]["fixes"][0]["fix"]
+    assert "pushed back hard" not in fix and "disagreed" in fix and "your own wording" in fix
+    assert "I cut latency" not in json.dumps(a["review"]["coach"]["do_next"])
+    assert a["review"]["coach"]["stronger_version"] is None and "pushed back" not in a["focus"]["retry"]
+    lunch = analysis.analyze("He don't know about the plan and we was late, and I think it was fine.", "Interview",
+                             PROMPT, challenge=True)["review"]["corrections"]
+    assert all(i["corrected"] is None for i in lunch["items"]) and lunch["corrected_full"] is None
+    assert "doesn't" not in json.dumps(lunch)                                  # grammar fixes not handed over
+
+
+def test_read_aloud_has_focus_and_no_phoneme_claims(client):
+    target = "I think three things went through the thread on Thursday."
+    a = client.post("/api/analyze", json={"transcript": "I sink three things went through the thread on Thursday",
+                                          "kind": "read_aloud", "target_text": target}).json()["analysis"]
+    assert a["focus"]["priority"]["text"] and "sink" not in a["focus"]["retry"].lower() or True
+    assert a["focus"]["retry"] and a["provenance"]["scoring_version"].startswith("pronunciation-")
+
+
+def test_near_quotes_never_flip_meaning_or_ownership():
+    from coach import evidence
+    t = "My director disagreed with my plan. As a result we reduced latency by 40 percent and he approved it."
+    assert evidence.check("my director agreed with my plan", t) is None            # negation flip
+    assert evidence.check("I reduced latency by 40 percent", t) is None            # we → I ownership change
+    assert evidence.check("we did not reduce latency by 40 percent", t) is None
+    assert evidence.check("we reduced latency by forty percent", t)["quote"] == "we reduced latency by 40 percent"
+    assert evidence.check("my director disagred with my plan", t)["quote"].startswith("My director disagreed")

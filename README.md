@@ -27,8 +27,9 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 - **Read-aloud drills** in 7 sets: technical clarity, word stress, TH, V/W, R/L, short vs long vowels, word endings.
 - **Word-by-word result:** what you read is aligned with the target sentence; every word is marked clear,
   unclear, swapped ("think" heard as "sink") or missed.
-- **Sound-swap detection:** a swapped word is compared with the target in the CMU Pronouncing Dictionary to name
-  the sound that changed (`th → s`, `v → w`, `r → l`, long *ee* → short *i*), and tracked per sound over time.
+- **Likely sound swaps:** when the recognizer hears a different word, the two words' dictionary pronunciations
+  (CMU Pronouncing Dictionary) are compared to name the likely swap (`th → s`, `v → w`, `r → l`, long *ee* →
+  short *i*), tracked per sound group over time. This is word-level evidence, not a phoneme-level measurement.
 - **Stress & respelling** for any word — `development` → dih-VEH-luhp-muhnt — plus ▶ hear / 🐢 slowly
   (browser text-to-speech) and minimal-pair drills.
 
@@ -52,6 +53,12 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 - Each day: concept, framework, cheat sheet, before/after example, and a spoken exercise with pass criteria.
 - The next day unlocks the following morning in your timezone; streaks and weekly milestones keep you going.
 - Program content lives in `content/programs/speaking-sprint-28.json`.
+
+**Focused results — new in v8.3**
+- Every take opens on three things: **Keep doing**, **Fix first** and **On your retry**. The full review, your
+  voice, words & sentences and measurements are one click away.
+- Quotes are your exact words, verified against the transcript; ▶ jumps to the moment in your recording when
+  Whisper timed it. Nothing is quoted that you didn't say, and no timestamp is guessed.
 
 **Feedback from three angles — new in v8**
 - **Evaluator:** the interviewer / audience / customer gives a verdict, quotes what landed and what raised a
