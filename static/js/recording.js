@@ -1,11 +1,18 @@
 /* Thought → Speak — recording.js: Practice: prompts and modes, the microphone and live transcript, recording, submitting takes. */
 import { $, esc, fmtTime, state } from "./core.js";
 import { api, pollJob, rememberJob, submitJob } from "./api.js";
+import { createTakeController } from "./takes.js";
 import { openLesson, renderLessonResult } from "./curriculum.js";
 import { showTab } from "./main.js";
 import { renderAnalysis, renderComparison, renderFocus, renderLanguage, renderPronunciation, renderVoice, speak, syncMore, wordsHtml } from "./results.js";
 
 export const READ_ALOUD = "Read aloud";
+// One take → at most one analysis job (idempotency-key rules live in takes.js).
+export const takes = createTakeController({
+  submit: (body, key, hasAudio) => submitJob(body, hasAudio, key),
+  poll: pollJob,
+  onJob: (job) => rememberJob(job.id),
+});
 export function setMode(mode, prompt) {
   const ra = mode === READ_ALOUD;
   $("modeChips").classList.toggle("hidden", ra);
@@ -92,7 +99,7 @@ export function resetTake() {
   $("transcript").value = ""; $("interim").classList.add("hidden");
   state.audioChunks = []; $("audioLen").textContent = "";
   state.elapsed = 0; state.spokeSeconds = 0; renderTimer();
-  state.idemKey = null;                       // a new take gets a new idempotency key
+  takes.reset();                              // a new take gets a new idempotency key
   $("status").textContent = "";
 }
 
@@ -221,6 +228,7 @@ export function renderTimer() {
 /* ------------------------------------------------------------------ analyze */
 $("analyzeBtn").onclick = analyze;
 export async function analyze() {
+  if (takes.busy) return;                     // a double-click while queued/running never creates a second job
   stopRecording();
   const transcript = $("transcript").value.trim();
   const hasAudio = audioSeconds() > 1.5;
@@ -244,20 +252,11 @@ export async function analyze() {
     target_text: state.mode === READ_ALOUD ? state.prompt : null,
   };
   if (state.mode === READ_ALOUD && body.kind === "free") body.kind = "read_aloud";
-  // one idempotency key per take: re-clicking or a network retry returns the same job (no double charge)
-  state.idemKey = state.idemKey || `take-${crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2)}`;
   try {
-    let job;
-    try { job = await submitJob(body, hasAudio); } catch (e) {
-      if (e.status !== 409) throw e;            // the take was edited after a failed submit → new key
-      state.idemKey = `take-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      job = await submitJob(body, hasAudio);
-    }
-    rememberJob(job.id);
-    const done = await pollJob(job.id);
-    showJobResult(done);
+    showJobResult(await takes.run(body, hasAudio));
   } catch (e) {
-    $("status").textContent = e.message;
+    // a network error keeps the take's key, so pressing Analyze again re-attaches to the same job
+    $("status").textContent = e.status ? e.message : `${e.message || "Connection problem"} — press Analyze to try again.`;
   } finally {
     $("analyzeBtn").disabled = false;
   }
@@ -265,14 +264,15 @@ export async function analyze() {
 
 export function showJobResult(job) {
   rememberJob(null);
-  if (job.status === "failed") { $("status").textContent = job.error || "Analysis failed — please try again."; return; }
   const r = job.result;
-  if (!r) return;
+  if (job.status === "failed" || !r) {          // failed, or the take was deleted — the next Analyze is a new job
+    $("status").textContent = job.error || "Analysis failed — please try again.";
+    return;
+  }
   if (r.attempt) {
     state.lastAttempt = r.attempt; state.chainId = r.attempt.chain_id;
     $("transcript").value = r.attempt.transcript;   // show exactly what was analyzed (Whisper text if used)
   }
-  state.idemKey = null;
   renderAnalysis(r.analysis);
   if (r.attempt) renderVoice(r.analysis.voice, r.attempt.id); else $("voiceCard").classList.add("hidden");
   renderPronunciation(r.analysis);
@@ -299,7 +299,7 @@ export async function resumeActiveJob() {
   showTab("practice");
   $("status").textContent = "Finishing the analysis you started…";
   $("analyzeBtn").disabled = true;
-  try { showJobResult(await pollJob(id)); }
+  try { showJobResult(await takes.resume(id)); }
   catch (_) { rememberJob(null); $("status").textContent = ""; }
   finally { $("analyzeBtn").disabled = false; }
 }

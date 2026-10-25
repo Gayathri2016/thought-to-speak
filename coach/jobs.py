@@ -25,6 +25,10 @@ Policies (also in README)
 - External providers: an AI or Whisper call that times out falls back to local analysis inside the job (not a
   failure). If the process dies mid-call, the job is re-run on restart, so a provider call can repeat —
   processing is at-least-once, bounded by ``JOB_MAX_TRIES``.
+- Once a job's take is saved (``attempts.job_id``), a re-run reuses it — no second take, no second analysis — and
+  any later error completes the job from that take instead of failing and refunding it.
+- Deleting a take marks its job ``error_code='deleted'`` (request/result removed, quota kept). Such a job never
+  re-runs analysis, and completing it never writes the result back.
 """
 import hashlib
 import json
@@ -37,8 +41,12 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+from . import adaptive
 from .schemas import AnalyzeRequest
 from .service import InputError
+from .storage import Store
+
+DELETED_MSG = Store.DELETED_MSG
 
 log = logging.getLogger("thought_to_speak")
 
@@ -145,9 +153,21 @@ class JobStore:
                              WHERE id=? AND status='queued'""", (now, now, job_id)).rowcount
             return dict(c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()) if n else None
 
-    def complete(self, job_id: str, result: dict, attempt_id: str | None):
+    def complete(self, job_id: str, result: dict | None, attempt_id: str | None):
+        """Mark completed (quota → consumed). If the take was deleted while the job was finishing, the job
+        completes without its result — deleted content is never written back."""
         now = _now()
         with self.s._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            j = c.execute("SELECT error_code FROM jobs WHERE id=?", (job_id,)).fetchone()
+            gone = j is not None and (j["error_code"] == "deleted" or (attempt_id is not None and not c.execute(
+                "SELECT 1 FROM attempts WHERE id=?", (attempt_id,)).fetchone()))
+            if gone:
+                c.execute("""UPDATE jobs SET status='completed', result_json=NULL, attempt_id=NULL, audio_tmp=NULL,
+                                             request_json=?, error=?, error_code='deleted', quota_state='consumed',
+                                             finished_at=?, updated_at=? WHERE id=? AND status='running'""",
+                          (json.dumps({"redacted": True}), DELETED_MSG, now, now, job_id))
+                return
             c.execute("""UPDATE jobs SET status='completed', result_json=?, attempt_id=?, audio_tmp=NULL,
                                          quota_state='consumed', finished_at=?, updated_at=?
                          WHERE id=? AND status='running'""", (json.dumps(result), attempt_id, now, now, job_id))
@@ -227,9 +247,11 @@ class JobRunner:
         requeued, failed = 0, 0
         for j in self.jobs.interrupted():
             if j["tries"] >= MAX_TRIES:
+                if self._salvage(j):                  # its take was saved: finish it, don't refund or re-run
+                    continue
                 self.jobs.fail(j["id"], "The analysis was interrupted too many times. You were not charged — "
                                         "please try again.", "interrupted")
-                self.service.discard_tmp(j.get("audio_tmp"))
+                self.service.discard_job_audio(j)
                 failed += 1
             else:
                 self.jobs.requeue(j["id"])
@@ -314,35 +336,69 @@ class JobRunner:
             except Exception:                         # never let a worker thread die
                 log.exception("Job runner error for %s", job_id)
 
+    @staticmethod
+    def _job_now(job) -> datetime:
+        try:
+            ts = json.loads(job.get("request_json") or "{}").get("_now")
+        except ValueError:
+            ts = None
+        return datetime.fromisoformat(ts) if ts else datetime.now().astimezone()
+
+    def _salvage(self, job: dict) -> bool:
+        """If this job already saved its take, complete the job from that take (quota consumed) and return True.
+        Used when finishing normally is impossible, so a saved take is never refunded or left with a failed job."""
+        try:
+            rec = self.store.attempt_for_job(job["id"], job["user_id"])
+            if not rec:
+                return False
+            try:
+                adaptive.record_take(self.store.for_user(job["user_id"]), rec, self._job_now(job))
+            except Exception:
+                log.exception("Skill update failed while salvaging job %s", job["id"])
+            self.service.discard_tmp(job.get("audio_tmp"))
+            self.jobs.complete(job["id"], {"attempt": rec, "analysis": rec["analysis"], "comparison": None,
+                                           "lesson_result": rec["analysis"].get("lesson_result")}, rec["id"])
+            return True
+        except Exception:
+            log.exception("Could not salvage job %s", job["id"])
+            return False
+
+    def _give_up(self, job: dict, message: str, code: str):
+        """Terminal failure — unless the take was already saved, in which case the job completes from it."""
+        if self._salvage(job):
+            return
+        self.service.discard_job_audio(job)
+        self.jobs.fail(job["id"], message, code)
+
     def run_one(self, job_id: str):
         job = self.jobs.claim(job_id)
         if not job:
             return                                    # already taken by another worker, or not queued
         try:
+            if job.get("error_code") == "deleted":    # the take was deleted mid-run: nothing to bring back
+                self.jobs.complete(job_id, None, None)
+                return
             req_data = json.loads(job["request_json"])
             now = datetime.fromisoformat(req_data.pop("_now")) if req_data.get("_now") else datetime.now().astimezone()
             req = AnalyzeRequest(**req_data)
             us = self.store.for_user(job["user_id"])
-            out = self.service.process(us, req, job.get("audio_tmp"), now)
+            out = self.service.process(us, req, job.get("audio_tmp"), now, job_id=job_id)
             if not req.save:
                 self.service.discard_tmp(job.get("audio_tmp"))
             self.jobs.complete(job_id, out, (out.get("attempt") or {}).get("id"))
         except InputError as e:
-            self.service.discard_tmp(job.get("audio_tmp"))
-            self.jobs.fail(job_id, e.message, e.code)
+            self._give_up(job, e.message, e.code)
         except sqlite3.OperationalError as e:         # e.g. database locked for too long — transient
             log.warning("Transient error on job %s (try %s): %s", job_id, job["tries"], e)
             if job["tries"] < MAX_TRIES:
-                self.jobs.requeue(job_id)
+                self.jobs.requeue(job_id)             # the re-run reuses anything this run already saved
                 self._q.put(job_id)
                 return
-            self.service.discard_tmp(job.get("audio_tmp"))
-            self.jobs.fail(job_id, "The analysis couldn't be saved. You were not charged — please try again.", "internal")
+            self._give_up(job, "The analysis couldn't be saved. You were not charged — please try again.", "internal")
         except Exception:
             log.exception("Job %s failed", job_id)
-            self.service.discard_tmp(job.get("audio_tmp"))
-            self.jobs.fail(job_id, "Something went wrong analysing this take. You were not charged — please try "
-                                   "again.", "internal")
+            self._give_up(job, "Something went wrong analysing this take. You were not charged — please try "
+                               "again.", "internal")
         finally:
             j = self.jobs.get(job_id)
             if j and j["status"] not in ACTIVE:

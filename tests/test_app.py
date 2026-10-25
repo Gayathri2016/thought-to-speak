@@ -1367,3 +1367,353 @@ def test_todays_review_follows_new_evidence_within_the_day(client):
     assert "baseline" not in again["title"].lower() and "No full-scored" not in again["detail"]
     stable = next(i for i in client.get("/api/today").json()["items"] if i["key"] == "review")
     assert stable["prompt"] == again["prompt"]                          # stable once refreshed
+
+
+# ----------------------------------------------------------------------------- v9.1: crash-safe finalization
+class Crash(BaseException):
+    """Stands in for the process dying: skips every `except Exception` handler, leaving the job 'running'."""
+
+
+def _once(fn, *, after=False):
+    """Wrap `fn` so its first call 'crashes' (before running it, or right after it ran)."""
+    calls = {"n": 0}
+
+    def wrapper(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1 and not after:
+            raise Crash()
+        out = fn(*a, **k)
+        if calls["n"] == 1 and after:
+            raise Crash()
+        return out
+    return wrapper
+
+
+def _manual_job(app_module, us, *, audio=False, key="crash-key-0001", transcript=STRONG):
+    """A queued job created exactly as `submit` would, but without starting the app's worker threads."""
+    import uuid as _uuid
+    from datetime import datetime
+    from coach.jobs import JobRunner, request_hash
+    from coach.schemas import AnalyzeRequest
+    runner = JobRunner(app_module.store, app_module.service, workers=1)      # driven by hand: never started
+    req = AnalyzeRequest(transcript=transcript, prompt=PROMPT, idempotency_key=key)
+    wav = _speechlike_wav([("q", .3), ("s", 5), ("q", .3)]) if audio else None
+    x = app_module.service.decode_upload(wav) if audio else None
+    jid = str(_uuid.uuid4())
+    tmp = app_module.service.write_tmp(jid, x) if audio else None
+    payload = {**req.model_dump(), "_now": datetime.now().astimezone().isoformat()}
+    runner.jobs.create(job_id=jid, user_id=us.user_id, req=payload, rhash=request_hash(req.model_dump(), wav),
+                       key=key, audio_tmp=tmp, limit=0)
+    return runner, jid
+
+
+def _skill_reviews(us):
+    from coach.analysis import DIMENSIONS
+    s = us.meta_get("skills") or {}
+    return {d: (s.get(d) or {}).get("reviews") for d in DIMENSIONS}
+
+
+CRASH_POINTS = [("before_finalize", True), ("before_save", False), ("before_save", True), ("after_save", False),
+                ("after_save", True), ("before_complete", False), ("before_complete", True),
+                ("after_complete", False), ("after_complete", True)]
+
+
+@pytest.mark.parametrize("point,audio", CRASH_POINTS)
+def test_crash_at_any_point_recovers_to_exactly_one_take(tmp_path, monkeypatch, point, audio):
+    from coach import adaptive, analysis, transcribe
+    from coach.jobs import JobRunner
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    analyzed = {"n": 0}
+    real_analyze = analysis.analyze
+
+    def counting(*a, **k):
+        analyzed["n"] += 1
+        return real_analyze(*a, **k)
+    monkeypatch.setattr(analysis, "analyze", counting)
+    runner, jid = _manual_job(app_module, us, audio=audio)
+    svc, store = app_module.service, app_module.store
+    if point == "before_finalize":
+        monkeypatch.setattr(svc, "_finalize_audio", _once(svc._finalize_audio))
+    elif point == "before_save":                                            # audio already finalized here
+        monkeypatch.setattr(store, "add_attempt", _once(store.add_attempt))
+    elif point == "after_save":                                             # take committed, skills not yet
+        monkeypatch.setattr(adaptive, "record_take", _once(adaptive.record_take))
+    elif point == "before_complete":
+        monkeypatch.setattr(runner.jobs, "complete", _once(runner.jobs.complete))
+    else:
+        monkeypatch.setattr(runner.jobs, "complete", _once(runner.jobs.complete, after=True))
+    with pytest.raises(Crash):
+        runner.run_one(jid)
+
+    restarted = JobRunner(store, svc, workers=1)                            # = the app starting again
+    restarted.recover()
+    restarted.run_one(jid)                                                  # no-op if it already completed
+
+    job = restarted.jobs.get(jid)
+    assert job["status"] == "completed" and job["quota_state"] == "consumed"
+    assert restarted.jobs.usage(us.user_id) == 1                           # one take, one unit
+    takes = us.all_chronological()
+    assert len(takes) == 1 and takes[0]["job_id"] == jid and job["attempt_id"] == takes[0]["id"]
+    assert set(_skill_reviews(us).values()) == {1}                         # adaptive state updated exactly once
+    committed_before_crash = point in ("after_save", "before_complete", "after_complete")
+    assert analyzed["n"] == (1 if committed_before_crash else 2)           # a saved take is never re-analyzed
+    if audio:
+        assert takes[0]["audio_path"] == f"{jid}.wav"
+        assert [p.name for p in app_module.AUDIO_DIR.iterdir()] == [f"{jid}.wav"]
+        assert list(app_module.TMP_DIR.iterdir()) == []
+        assert c.get(f"/api/audio/{takes[0]['id']}").status_code == 200
+
+
+def test_transient_error_after_save_reuses_the_take(tmp_path, monkeypatch):
+    import sqlite3
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    runner, jid = _manual_job(app_module, us)
+    real = runner.jobs.complete
+    calls = {"n": 0}
+
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real(*a, **k)
+    monkeypatch.setattr(runner.jobs, "complete", flaky)
+    runner.run_one(jid)                                                     # → re-queued, take already saved
+    assert runner.jobs.get(jid)["status"] == "queued"
+    runner.run_one(jid)
+    job = runner.jobs.get(jid)
+    assert job["status"] == "completed" and job["tries"] == 2
+    assert len(us.all_chronological()) == 1 and set(_skill_reviews(us).values()) == {1}
+    assert runner.jobs.usage(us.user_id) == 1
+
+
+def test_transient_error_while_saving_keeps_the_recording_for_the_retry(tmp_path, monkeypatch):
+    import sqlite3
+    from coach import transcribe
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    runner, jid = _manual_job(app_module, us, audio=True)
+    real, calls = app_module.store.add_attempt, {"n": 0}
+
+    def flaky(**k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real(**k)
+    monkeypatch.setattr(app_module.store, "add_attempt", flaky)
+    runner.run_one(jid)                                                     # moved, then the save failed
+    assert [p.name for p in app_module.AUDIO_DIR.iterdir()] == [f"{jid}.wav"]
+    runner.run_one(jid)
+    take = us.all_chronological()
+    assert runner.jobs.get(jid)["status"] == "completed" and len(take) == 1 and take[0]["audio_path"] == f"{jid}.wav"
+
+
+def test_failure_before_save_refunds_and_removes_the_moved_recording(tmp_path, monkeypatch):
+    from coach import transcribe
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    monkeypatch.setattr(transcribe, "transcribe", lambda p: None)
+    runner, jid = _manual_job(app_module, us, audio=True)
+
+    def broken(**k):
+        raise RuntimeError("bug")
+    monkeypatch.setattr(app_module.store, "add_attempt", broken)
+    runner.run_one(jid)
+    job = runner.jobs.get(jid)
+    assert job["status"] == "failed" and job["quota_state"] == "refunded" and runner.jobs.usage(us.user_id) == 0
+    assert list(app_module.AUDIO_DIR.iterdir()) == [] and list(app_module.TMP_DIR.iterdir()) == []
+    assert us.all_chronological() == []
+
+
+def test_error_after_save_completes_the_job_instead_of_refunding(tmp_path, monkeypatch):
+    from coach import adaptive
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    runner, jid = _manual_job(app_module, us)
+
+    def broken(*a, **k):
+        raise RuntimeError("bug in the skill update")
+    monkeypatch.setattr(adaptive, "record_take", broken)
+    runner.run_one(jid)
+    job = runner.jobs.get(jid)
+    assert job["status"] == "completed" and job["quota_state"] == "consumed"   # saved take: not "free", not failed
+    assert job["attempt_id"] == us.all_chronological()[0]["id"] and runner.jobs.usage(us.user_id) == 1
+
+
+def test_out_of_tries_recovery_keeps_a_saved_take(tmp_path, monkeypatch):
+    from coach import adaptive
+    from coach.jobs import JobRunner, MAX_TRIES
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    runner, jid = _manual_job(app_module, us)
+    monkeypatch.setattr(adaptive, "record_take", _once(adaptive.record_take))
+    with pytest.raises(Crash):
+        runner.run_one(jid)
+    with app_module.store._conn() as conn:
+        conn.execute("UPDATE jobs SET tries=? WHERE id=?", (MAX_TRIES, jid))
+    assert JobRunner(app_module.store, app_module.service, workers=1).recover() == {"requeued": 0, "failed": 0}
+    job = runner.jobs.get(jid)
+    assert job["status"] == "completed" and job["quota_state"] == "consumed" and job["attempt_id"]
+    assert len(us.all_chronological()) == 1 and set(_skill_reviews(us).values()) == {1}
+
+
+def test_one_take_per_job_is_enforced_by_the_database(tmp_path, monkeypatch):
+    import sqlite3
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    a = us.add_attempt(mode="Interview", prompt=PROMPT, transcript=STRONG, challenge_mode=False,
+                       duration_seconds=None, analysis={"scores": {}}, job_id="job-x")
+    b = us.add_attempt(mode="Interview", prompt=PROMPT, transcript=STRONG, challenge_mode=False,
+                       duration_seconds=None, analysis={"scores": {}}, job_id="job-x")
+    assert a["id"] == b["id"] and len(us.all_chronological()) == 1
+    with pytest.raises(sqlite3.IntegrityError), app_module.store._conn() as conn:
+        conn.execute("INSERT INTO attempts (id, chain_id, attempt_no, created_at, mode, transcript, analysis_json,"
+                     " job_id) VALUES ('dup', 'c', 1, '2026-01-01', 'Interview', 'x', '{}', 'job-x')")
+
+
+def test_schema_4_migration_links_existing_takes_to_their_jobs(tmp_path):
+    import sqlite3
+    from coach.storage import Store
+    path = tmp_path / "s3.db"
+    s = Store(path)
+    rec = s.add_attempt(mode="Interview", prompt="p", transcript="hello there friends", challenge_mode=False,
+                        duration_seconds=None, analysis={"scores": {}}, user_id="u1")
+    db = sqlite3.connect(path)                                             # rewind the file to schema 3
+    db.execute("DROP INDEX idx_attempts_job")
+    db.execute("ALTER TABLE attempts DROP COLUMN job_id")
+    db.execute("""INSERT INTO jobs (id, user_id, request_hash, status, request_json, attempt_id, created_at, updated_at)
+                  VALUES ('job-old', 'u1', 'h', 'completed', '{}', ?, '2026-10-01', '2026-10-01')""", (rec["id"],))
+    db.execute("UPDATE meta SET value='3' WHERE key='schema_version'")
+    db.commit()
+    before = db.execute("SELECT analysis_json, transcript FROM attempts").fetchall()
+    db.close()
+    Store(path)
+    Store(path)                                                            # idempotent
+    db = sqlite3.connect(path)
+    assert db.execute("SELECT job_id FROM attempts").fetchall() == [("job-old",)]
+    assert db.execute("SELECT analysis_json, transcript FROM attempts").fetchall() == before
+    assert db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "4"
+    assert db.execute("SELECT 1 FROM sqlite_master WHERE name='idx_attempts_job'").fetchone()
+
+
+# ----------------------------------------------------------------------------- v9.1: deleting a take
+SECRET = " The codename for the project was zebracorn."
+
+
+def test_deleting_a_take_removes_it_everywhere(tmp_path, monkeypatch):
+    from coach.adaptive import BASELINE
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    ada, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(ada, "ada@example.com")
+    _signup(bob, "bob@example.com")
+    b0 = BASELINE[0]
+    first = {"transcript": STRONG + SECRET, "kind": "baseline", "prompt": b0["prompt"], "mode": b0["mode"]}
+    h = {"Idempotency-Key": "take-secret-01"}
+    t1 = ada.post("/api/jobs", json=first, headers=h).json()
+    t1 = _poll(ada, t1["id"])
+    a1 = t1["result"]["attempt"]
+    retry = {**first, "transcript": STRONG, "chain_id": a1["chain_id"]}
+    t2 = _poll(ada, ada.post("/api/jobs", json=retry, headers={"Idempotency-Key": "take-secret-02"}).json()["id"])
+    assert t2["result"]["comparison"]["base_id"] == a1["id"]
+    for item in BASELINE[1:]:
+        ada.post("/api/analyze", json={"transcript": STRONG, "kind": "baseline", "prompt": item["prompt"],
+                                       "mode": item["mode"]})
+    assert ada.get("/api/baseline").json()["items"][0]["attempt_id"] == a1["id"]
+    bob.post("/api/analyze", json={"transcript": STRONG + SECRET, "prompt": PROMPT})
+    used = ada.get("/api/usage").json()["used"]
+    us = _user(app_module)
+    assert set(_skill_reviews(us).values()) == {4}
+
+    assert bob.delete(f"/api/attempts/{a1['id']}").status_code == 404     # user-scoped
+    assert ada.delete(f"/api/attempts/{a1['id']}").json()["ok"]
+    assert ada.delete(f"/api/attempts/{a1['id']}").status_code == 404
+
+    everything = json.dumps([ada.get(p).json() for p in ("/api/history", "/api/export", "/api/jobs",
+                                                         f"/api/jobs/{t1['id']}", f"/api/jobs/{t2['id']}")])
+    assert "zebracorn" not in everything and a1["id"] not in everything
+    gone = ada.get(f"/api/jobs/{t1['id']}").json()
+    assert gone["status"] == "completed" and gone["result"] is None and gone["attempt_id"] is None
+    assert gone["error_code"] == "deleted" and gone["quota"] == "consumed"
+    assert ada.get(f"/api/jobs/{t2['id']}").json()["result"]["comparison"] is None   # compared against the deleted take
+    with app_module.store._conn() as conn:
+        row = conn.execute("SELECT request_json, result_json FROM jobs WHERE id=?", (t1["id"],)).fetchone()
+        assert "zebracorn" not in (row[0] or "") and row[1] is None
+        assert conn.execute("SELECT COUNT(*) FROM comparisons WHERE base_id=? OR current_id=?",
+                            (a1["id"], a1["id"])).fetchone()[0] == 0
+    # idempotency replay: same key + same take → the same (deleted) job; nothing re-created, no new charge
+    replay = ada.post("/api/jobs", json=first, headers=h)
+    assert replay.status_code == 200 and replay.json()["id"] == t1["id"] and replay.json()["error_code"] == "deleted"
+    sync = ada.post("/api/analyze", json=first, headers=h)
+    assert sync.status_code == 410
+    assert len(ada.get("/api/history").json()) == 3 and ada.get("/api/usage").json()["used"] == used
+    # baseline and skills no longer count the deleted take; the retry of that item takes its place
+    base = ada.get("/api/baseline").json()
+    assert base["complete"] and base["items"][0]["attempt_id"] == t2["attempt_id"]
+    assert set(_skill_reviews(us).values()) == {3}
+    # the other user's take is untouched
+    assert "zebracorn" in json.dumps(bob.get("/api/history").json())
+
+
+def test_take_deleted_while_its_job_finishes_is_not_written_back(tmp_path, monkeypatch):
+    from coach import adaptive
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    runner, jid = _manual_job(app_module, us, transcript=STRONG + SECRET)
+    real = adaptive.record_take
+
+    def delete_then_record(store, rec, now):                               # the user deletes it mid-finalization
+        assert c.delete(f"/api/attempts/{rec['id']}").json()["ok"]
+        return real(store, rec, now)
+    monkeypatch.setattr(adaptive, "record_take", delete_then_record)
+    runner.run_one(jid)
+    job = runner.jobs.get(jid)
+    assert job["status"] == "completed" and job["error_code"] == "deleted" and job["result_json"] is None
+    assert "zebracorn" not in json.dumps(c.get("/api/jobs").json()) and us.all_chronological() == []
+    # a later re-run of that job (e.g. after a crash) doesn't bring it back
+    with app_module.store._conn() as conn:
+        conn.execute("UPDATE jobs SET status='queued' WHERE id=?", (jid,))
+    monkeypatch.setattr(adaptive, "record_take", real)
+    runner.run_one(jid)
+    assert us.all_chronological() == [] and runner.jobs.get(jid)["error_code"] == "deleted"
+
+
+# ----------------------------------------------------------------------------- v9.1: frontend take controller
+def test_frontend_idempotency_key_rules():
+    """Runs tests/js/takes.test.mjs (node:test) — the browser's idempotency-key rules for a take."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    test_file = Path(__file__).parent / "js" / "takes.test.mjs"
+    r = subprocess.run([node, "--test", str(test_file)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert "# fail 0" in r.stdout
+
+
+def test_recording_uses_the_take_controller():
+    """The Analyze button goes through takes.js — no hand-rolled key handling left in recording.js."""
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / "static" / "js" / "recording.js").read_text()
+    assert "takes.run(" in src and "takes.resume(" in src and "if (takes.busy) return;" in src
+    assert "idemKey" not in src

@@ -72,25 +72,62 @@ def update_skill(state: dict | None, score: int, day: date) -> tuple[dict, str]:
     return new, why
 
 
-def record_take(store, attempt: dict, now: datetime) -> None:
-    """Update skill schedules (and baseline progress) after a saved take."""
+APPLIED = "_applied"          # ids of takes already applied to the schedule (written in the same value → exactly once)
+APPLIED_KEEP = 200
+
+
+def _scorable(attempt: dict) -> bool:
     a = attempt.get("analysis") or {}
-    if attempt.get("kind") == "read_aloud" or a.get("kind") == "read_aloud":
-        return
-    scores = a.get("scores") or {}
-    day = _local_date(attempt["created_at"], now.tzinfo)
-    skills = store.meta_get(SKILL_KEY) or {}
+    return not (attempt.get("kind") == "read_aloud" or a.get("kind") == "read_aloud")
+
+
+def _apply(skills: dict, attempt: dict, tz) -> None:
+    scores = (attempt.get("analysis") or {}).get("scores") or {}
+    day = _local_date(attempt["created_at"], tz)
     for d in DIMENSIONS:
         if isinstance(scores.get(d), int):
             new, why = update_skill(skills.get(d), scores[d], day)
             skills[d] = {**new, "why": why}
-    store.meta_set(SKILL_KEY, skills)
+    skills[APPLIED] = (skills.get(APPLIED, []) + [attempt["id"]])[-APPLIED_KEEP:]
+
+
+def record_take(store, attempt: dict, now: datetime) -> None:
+    """Update skill schedules (and baseline progress) after a saved take. Idempotent: a take that a recovered
+    job finalizes again is applied once (its id is stored with the schedule in the same write)."""
+    if not _scorable(attempt):
+        return
+    skills = store.meta_get(SKILL_KEY) or {}
+    if attempt["id"] not in skills.get(APPLIED, []):
+        _apply(skills, attempt, now.tzinfo)
+        store.meta_set(SKILL_KEY, skills)
     if attempt.get("kind") == "baseline":
         item = next((b for b in BASELINE if b["prompt"] == attempt.get("prompt")), None)
         if item:
             base = store.meta_get(BASELINE_KEY) or {"items": {}}
-            base["items"].setdefault(item["key"], attempt["id"])      # the first take of each item counts
-            store.meta_set(BASELINE_KEY, base)
+            if item["key"] not in base["items"]:                       # the first take of each item counts
+                base["items"][item["key"]] = attempt["id"]
+                store.meta_set(BASELINE_KEY, base)
+
+
+def rebuild_after_delete(store, deleted: dict, now: datetime) -> None:
+    """A deleted take must stop counting: replay the skill schedule from the remaining takes (oldest first —
+    the same rule, same order) and re-pick each baseline item's first remaining take."""
+    if not _scorable(deleted):
+        return
+    remaining = [a for a in store.all_chronological() if _scorable(a)]
+    skills: dict = {}
+    for a in remaining:
+        _apply(skills, a, now.tzinfo)
+    store.meta_set(SKILL_KEY, skills)
+    base = store.meta_get(BASELINE_KEY)
+    if base and deleted["id"] in base.get("items", {}).values():
+        by_prompt = {b["prompt"]: b["key"] for b in BASELINE}
+        items: dict = {}
+        for a in remaining:
+            k = by_prompt.get(a.get("prompt"))
+            if a.get("kind") == "baseline" and k:
+                items.setdefault(k, a["id"])
+        store.meta_set(BASELINE_KEY, {**base, "items": items})
 
 
 def skills_view(store, now: datetime) -> dict:

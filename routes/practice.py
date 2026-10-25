@@ -21,7 +21,7 @@ from .deps import Context, get_ctx, user_now, user_store
 router = APIRouter(tags=["practice"])
 
 ERROR_STATUS = {"invalid_input": 400, "too_short": 400, "bad_audio": 400, "locked": 403, "unknown_lesson": 404,
-                "too_large": 413, "too_long": 413, "internal": 500, "interrupted": 500}
+                "too_large": 413, "too_long": 413, "audio_missing": 400, "internal": 500, "interrupted": 500}
 JOB_WAIT_SECONDS = float(os.getenv("JOB_WAIT_SECONDS", 180))
 
 
@@ -94,6 +94,8 @@ async def _decode_audio_upload(c: Context, audio: UploadFile):
 def _finish(job: dict):
     """Synchronous endpoints: return the analysis, an HTTP error for a failed job, or 202 if still running."""
     if job["status"] == "completed":
+        if job.get("error_code") == "deleted" or not job.get("result_json"):
+            raise HTTPException(410, job.get("error") or "This take was deleted.")   # a replay never re-creates it
         return json.loads(job["result_json"])
     if job["status"] == "failed":
         raise HTTPException(ERROR_STATUS.get(job.get("error_code"), 500), job.get("error") or "Analysis failed")

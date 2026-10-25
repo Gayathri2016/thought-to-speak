@@ -1,5 +1,18 @@
 # Changelog
 
+## v9.1 — reliability and deletion fixes
+- Crash-safe job finalization: each saved take records the job that created it (`attempts.job_id`, unique), so a
+  job re-run after a crash or a failed completion reuses its saved take instead of saving (and charging) a second
+  one; the saved take is never re-analyzed. Recordings move to `data/audio/<job id>.wav`, recoverable from either
+  folder. Skill-schedule updates are applied once per take. A job whose take was saved is completed, never
+  failed + refunded.
+- Deleting a take also removes its content from the job that created it (request and result), from retry
+  comparisons stored in other jobs and from cached narratives; quota stays as used; replaying the key returns the
+  deleted job (sync endpoints: 410) and never re-creates the take. Skills and baseline are recomputed without it.
+- Retrying after a failed analysis starts a new job (the idempotency key is cleared on any terminal outcome and
+  kept only when the outcome is unknown). Key rules live in `static/js/takes.js`, with Node unit tests.
+- Schema 4 migration (additive): `attempts.job_id`, back-filled from completed jobs; nothing else changes.
+
 ## v9 — adaptive learning
 - 3-prompt baseline assessment for new users, with a starting-point summary.
 - Per-skill spaced reviews (Leitner boxes: 1, 2, 4, 7, 14, 30 days) with a plain-language reason for each skill;

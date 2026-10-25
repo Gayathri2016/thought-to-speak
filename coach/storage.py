@@ -107,22 +107,29 @@ class Store:
         if legacy_json:
             self._import_legacy(Path(legacy_json))
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     @classmethod
     def _migrate(cls, c):
         """Additive, idempotent migrations. Never drops or rewrites existing data — only adds columns and fills
         new columns that are still NULL.
-        v3: lesson/daily-plan columns · v6: user_id · schema 2 (v8.2): scoring provenance."""
+        v3: lesson/daily-plan columns · v6: user_id · schema 2 (v8.2): scoring provenance ·
+        schema 4 (v9.1): attempts.job_id — the analysis job that saved the take (unique), so a recovered job reuses
+        its committed take instead of saving a second one."""
         cols = {r["name"] for r in c.execute("PRAGMA table_info(attempts)")}
         for name, ddl in (("kind", "TEXT NOT NULL DEFAULT 'free'"), ("lesson_id", "TEXT"),
                           ("lesson_passed", "INTEGER"), ("audio_path", "TEXT"), ("user_id", "TEXT"),
                           ("score_basis", "TEXT"), ("scoring_version", "TEXT"), ("model", "TEXT"),
-                          ("rubric_version", "TEXT"), ("transcript_source", "TEXT")):
+                          ("rubric_version", "TEXT"), ("transcript_source", "TEXT"), ("job_id", "TEXT")):
             if name not in cols:
                 c.execute(f"ALTER TABLE attempts ADD COLUMN {name} {ddl}")
         c.execute("CREATE INDEX IF NOT EXISTS idx_attempts_lesson ON attempts(lesson_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id, created_at)")
+        # Link takes saved by completed jobs before schema 4 (one job → one take; first job wins if ever ambiguous).
+        c.execute("""UPDATE attempts SET job_id = (SELECT j.id FROM jobs j WHERE j.attempt_id = attempts.id
+                                                   ORDER BY j.created_at LIMIT 1)
+                     WHERE job_id IS NULL AND id IN (SELECT attempt_id FROM jobs WHERE attempt_id IS NOT NULL)""")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_attempts_job ON attempts(job_id) WHERE job_id IS NOT NULL")
         cls._backfill_provenance(c)
         c.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (json.dumps(cls.SCHEMA_VERSION),))
 
@@ -166,8 +173,13 @@ class Store:
     # ---------- writes ----------
     def add_attempt(self, *, mode, prompt, transcript, challenge_mode, duration_seconds, analysis,
                     chain_id=None, created_at=None, kind="free", lesson_id=None, lesson_passed=None,
-                    audio_path=None, user_id=None) -> dict:
+                    audio_path=None, user_id=None, job_id=None) -> dict:
+        """Save a take. With `job_id`, at most one take is ever saved per job: a second call returns the first."""
         with _lock, self._conn() as c:
+            if job_id:
+                r = c.execute("SELECT id FROM attempts WHERE job_id=? AND user_id IS ?", (job_id, user_id)).fetchone()
+                if r:
+                    return self.get(r["id"], user_id)
             if chain_id:
                 row = c.execute("SELECT MAX(attempt_no) n FROM attempts WHERE chain_id=?", (chain_id,)).fetchone()
                 attempt_no = (row["n"] or 0) + 1
@@ -188,7 +200,7 @@ class Store:
                 "analysis_json": json.dumps(analysis),
                 "kind": kind or "free", "lesson_id": lesson_id,
                 "lesson_passed": None if lesson_passed is None else int(bool(lesson_passed)),
-                "audio_path": audio_path, "user_id": user_id,
+                "audio_path": audio_path, "user_id": user_id, "job_id": job_id,
                 **{k: (analysis.get("provenance") or {}).get(k)
                    for k in ("score_basis", "scoring_version", "model", "rubric_version", "transcript_source")},
             }
@@ -198,8 +210,31 @@ class Store:
                 self._backfill_provenance(c)
         return self.get(rec["id"], user_id)
 
+    DELETED_MSG = "This take was deleted. Start a new take to analyze it again."
+
     def delete(self, attempt_id: str, user_id=None) -> bool:
+        """Delete one take and everything that still holds its content, in one transaction (user-scoped):
+        - the job that saved it keeps its quota accounting but loses its request and result (marked 'deleted'),
+          so polling, job listing and idempotency replay can't return the take or silently re-create it;
+        - other jobs' results drop retry comparisons made against it; cached comparison narratives go."""
         with _lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute("SELECT job_id FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).fetchone()
+            if not row:
+                return False
+            now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            c.execute("""UPDATE jobs SET result_json=NULL, request_json=?, attempt_id=NULL, audio_tmp=NULL,
+                                         error=?, error_code='deleted', updated_at=?
+                         WHERE user_id IS ? AND (attempt_id=? OR id IS ?)""",
+                      (json.dumps({"redacted": True}), self.DELETED_MSG, now, user_id, attempt_id, row["job_id"]))
+            for j in c.execute("SELECT id, result_json FROM jobs WHERE user_id IS ? AND result_json LIKE ?",
+                               (user_id, f"%{attempt_id}%")).fetchall():
+                res = json.loads(j["result_json"])
+                for k in ("comparison", "first_vs_latest"):
+                    cmp = res.get(k) or {}
+                    if attempt_id in (cmp.get("base_id"), cmp.get("current_id")):
+                        res[k] = None
+                c.execute("UPDATE jobs SET result_json=? WHERE id=?", (json.dumps(res), j["id"]))
             c.execute("DELETE FROM comparisons WHERE (base_id=? OR current_id=?) AND user_id IS ?",
                       (attempt_id, attempt_id, user_id))
             return c.execute("DELETE FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).rowcount > 0
@@ -215,6 +250,11 @@ class Store:
     def get(self, attempt_id: str, user_id=None) -> dict | None:
         with self._conn() as c:
             r = c.execute("SELECT * FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).fetchone()
+        return self._row(r) if r else None
+
+    def attempt_for_job(self, job_id: str, user_id=None) -> dict | None:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM attempts WHERE job_id=? AND user_id IS ?", (job_id, user_id)).fetchone()
         return self._row(r) if r else None
 
     def chain(self, chain_id: str, user_id=None) -> list[dict]:
@@ -403,6 +443,9 @@ class UserStore:
 
     def get(self, attempt_id):
         return self._s.get(attempt_id, self.user_id)
+
+    def attempt_for_job(self, job_id):
+        return self._s.attempt_for_job(job_id, self.user_id)
 
     def chain(self, chain_id):
         return self._s.chain(chain_id, self.user_id)

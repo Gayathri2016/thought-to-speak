@@ -226,7 +226,9 @@ RUN_LIVE_EVAL=1 pytest -m live                    # optional: evaluate your conf
 Each take is saved as an **analysis job** before any expensive work starts:
 
 1. The browser submits the take with an **idempotency key** (one per take). Re-clicking, a network retry or a
-   refresh can't create a second take or a second AI call — the same key returns the same job.
+   refresh can't create a second take or a second AI call — the same key returns the same job. The key is kept
+   only while the outcome is unknown (dropped connection, server error); once the job has finished — or failed —
+   pressing Analyze again starts a new job.
 2. The server validates it (length, lesson, upload size, real audio duration) and, in one database transaction,
    creates the job and **reserves one unit of your daily quota** (including "analyze without saving").
 3. A background worker processes it: queued → running → completed / failed. Refresh the page at any time —
@@ -239,12 +241,15 @@ Each take is saved as an **analysis job** before any expensive work starts:
 | Whisper hears nothing / unreadable audio | Job fails with the reason; quota refunded; not retried |
 | AI or Whisper times out | Falls back to built-in analysis inside the job (the take still completes) |
 | App restarts mid-analysis | Job is re-queued on start-up (up to `JOB_MAX_TRIES`, default 3), then failed + refunded |
-| Unexpected error | Job fails, quota refunded, you can submit again |
+| App restarts after the take was saved | The re-run finds the saved take (one take per job) and finishes from it — no second take, no second analysis, skills updated once |
+| Unexpected error | Job fails, quota refunded, you can submit again — unless the take was already saved, then the job completes |
+| You delete a take | Its job keeps the quota accounting but loses the stored request and result (shown as "deleted"); replaying its key returns that job and never re-creates the take; skills and baseline are recomputed without it |
 
 Limits worth knowing: workers run inside the app process, so run **one** uvicorn worker process. Processing is
 *at-least-once*: if the process dies during an AI call, that call may be repeated after restart (bounded by
-`JOB_MAX_TRIES`). Temporary audio lives in `data/tmp` and is moved to `data/audio` only when a take is saved;
-unreferenced temp files are deleted after an hour. Saved recordings are never deleted automatically.
+`JOB_MAX_TRIES`). Once a take is saved it is never analyzed again. Temporary audio lives in `data/tmp` and is
+moved to `data/audio/<job id>.wav` when a take is saved (a re-run finds it in either place); unreferenced temp
+files are deleted after an hour. Saved recordings are never deleted automatically.
 Comparison narratives are generated once per pair of takes and cached.
 
 API: `POST /api/jobs` (JSON) or `POST /api/jobs/audio` (multipart) with an `Idempotency-Key` header → `202`
@@ -255,7 +260,7 @@ with the job; poll `GET /api/jobs/{id}`; `GET /api/jobs?active=true`; `GET /api/
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q
+pytest -q          # includes the browser take-controller tests (node --test tests/js/takes.test.mjs) if Node is installed
 ```
 
 ## Limitations

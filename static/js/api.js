@@ -12,8 +12,8 @@ export async function api(path, opts = {}) {
 }
 
 /* ------------------------------------------------------------------ analysis jobs (v8.4) */
-export async function submitJob(body, hasAudio) {
-  const headers = { "X-Timezone": TZ, "Idempotency-Key": state.idemKey };
+export async function submitJob(body, hasAudio, key) {
+  const headers = { "X-Timezone": TZ, "Idempotency-Key": key };
   let resp;
   if (hasAudio) {
     const fd = new FormData();

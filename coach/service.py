@@ -5,8 +5,14 @@ The HTTP layer and the job worker both call this module; neither contains analys
 Audio lifecycle
 - An upload is read with a hard byte limit, decoded, and its duration validated *before* any job is created.
 - The decoded audio is written to ``<tmp_dir>/<job id>.wav`` (temporary).
-- When the take is saved, the temp file is moved (atomic rename) to ``<audio_dir>/<uuid>.wav`` and referenced by
-  the attempt. For ``save=false`` or a failed job the temp file is deleted by the job runner.
+- When the take is saved, the temp file is moved (atomic rename) to ``<audio_dir>/<job id>.wav`` and referenced by
+  the attempt. The final name is derived from the job, so a job re-run after a crash finds its recording in
+  either place. For ``save=false`` or a failed job the files are deleted by the job runner.
+
+Crash safety (job runs are at-least-once): every step after analysis is idempotent per job —
+  move audio (rename, or already moved) → save the take (one per job: ``attempts.job_id`` is unique) →
+  update skills (once per take) → job completed.
+A job re-run after a crash that finds its take already saved reuses it: no second analysis, no second take.
 """
 import os
 import uuid
@@ -90,17 +96,45 @@ class AnalysisService:
         if name:
             (self.tmp_dir / Path(name).name).unlink(missing_ok=True)
 
-    def _finalize_audio(self, tmp_name: str) -> str:
-        final = f"{uuid.uuid4()}.wav"
-        os.replace(self.tmp_dir / Path(tmp_name).name, self.audio_dir / final)
+    @staticmethod
+    def final_audio_name(job_id: str | None) -> str:
+        return f"{Path(job_id).name}.wav" if job_id else f"{uuid.uuid4()}.wav"
+
+    def discard_job_audio(self, job: dict):
+        """A job that ends without a saved take: remove its temp file and any recording it already moved."""
+        self.discard_tmp(job.get("audio_tmp") or f"{job['id']}.wav")
+        (self.audio_dir / self.final_audio_name(job["id"])).unlink(missing_ok=True)
+
+    def _finalize_audio(self, tmp_name: str, job_id: str | None = None, final: str | None = None) -> str:
+        """Move temp → final. Idempotent: if a previous run already moved it, the final file is reused."""
+        final = final or self.final_audio_name(job_id)
+        src, dst = self.tmp_dir / Path(tmp_name).name, self.audio_dir / Path(final).name
+        if src.exists():
+            os.replace(src, dst)
+        elif not dst.exists():
+            raise InputError(400, "The recording for this take was lost — please record it again.", "audio_missing")
         return final
 
+    def _audio_source(self, audio_tmp: str, job_id: str | None) -> Path:
+        tmp = self.tmp_dir / Path(audio_tmp).name
+        if tmp.exists() or not job_id:
+            return tmp
+        moved = self.audio_dir / self.final_audio_name(job_id)   # finalized before a crash, take not yet saved
+        if moved.exists():
+            return moved
+        raise InputError(400, "The recording for this take was lost — please record it again.", "audio_missing")
+
     # ------------------------------------------------------------------ processing
-    def process(self, us, req: AnalyzeRequest, audio_tmp: str | None, now: datetime) -> dict:
-        """Full analysis of one submission. Raises InputError for problems with the submission itself."""
+    def process(self, us, req: AnalyzeRequest, audio_tmp: str | None, now: datetime, job_id: str | None = None) -> dict:
+        """Full analysis of one submission. Raises InputError for problems with the submission itself.
+        If this job already saved its take (a re-run after a crash), that take is reused — never analyzed again."""
+        if job_id and req.save:
+            rec = us.attempt_for_job(job_id)
+            if rec:
+                return self.resume_saved(us, req, rec, audio_tmp, now)
         if not audio_tmp:
-            return self.run(us, req, req.transcript.strip(), now=now)
-        path = self.tmp_dir / Path(audio_tmp).name
+            return self.run(us, req, req.transcript.strip(), now=now, job_id=job_id)
+        path = self._audio_source(audio_tmp, job_id)
         x = audio_mod.load_audio(path.read_bytes())
         tr = transcribe.transcribe(str(path))
         words, source, warn = None, "browser speech-to-text", None
@@ -115,13 +149,13 @@ class AnalysisService:
             raise InputError(400, str(e), "bad_audio")
         voice["transcript_source"] = source
         voice["browser_transcript"] = req.transcript.strip() if words else None
-        out = self.run(us, req, text, voice, words, audio_tmp, now)
+        out = self.run(us, req, text, voice, words, audio_tmp, now, job_id=job_id)
         if warn:
             out["analysis"]["warning"] = " ".join(filter(None, [out["analysis"].get("warning"), warn]))
         return out
 
     def run(self, store, req: AnalyzeRequest, text: str, voice: dict | None = None, words: list[dict] | None = None,
-            audio_tmp: str | None = None, now: datetime | None = None) -> dict:
+            audio_tmp: str | None = None, now: datetime | None = None, job_id: str | None = None) -> dict:
         now = now or datetime.now().astimezone()
         if len(text.split()) < self._min_words(req):
             raise InputError(400, "Speak or paste a response of at least a few words first.", "too_short")
@@ -159,18 +193,33 @@ class AnalysisService:
         if pid and not store.meta_get(cur.program_key(pid)):
             cur.enroll(store, pid, now)                  # practising Day 1 starts the program
         chain_id = req.chain_id if req.chain_id and store.chain(req.chain_id) else None
-        audio_name = self._finalize_audio(audio_tmp) if audio_tmp else None
+        audio_name = self._finalize_audio(audio_tmp, job_id) if audio_tmp else None
         try:
             rec = store.add_attempt(mode=mode, prompt=prompt, transcript=text,
                                     challenge_mode=req.challenge_mode, duration_seconds=req.duration_seconds,
                                     analysis=result, chain_id=chain_id, kind=kind,
                                     lesson_id=lesson["id"] if lesson else None,
                                     lesson_passed=lesson_result["passed"] if lesson_result else None,
-                                    audio_path=audio_name)
+                                    audio_path=audio_name, job_id=job_id)
         except Exception:
-            if audio_name:                               # don't orphan the moved recording
+            if audio_name and not job_id:                # job runs keep it: a retry or the runner's cleanup decides
                 (self.audio_dir / audio_name).unlink(missing_ok=True)
             raise
+        return self._after_save(store, rec, now)
+
+    def resume_saved(self, store, req: AnalyzeRequest, rec: dict, audio_tmp: str | None, now: datetime) -> dict:
+        """Finish a job whose take was saved before an interruption: same take, no new analysis."""
+        if audio_tmp and rec.get("audio_path"):
+            if (self.tmp_dir / Path(audio_tmp).name).exists():
+                self._finalize_audio(audio_tmp, final=rec["audio_path"])
+        return self._after_save(store, rec, now)
+
+    def _after_save(self, store, rec: dict, now: datetime) -> dict:
+        """Everything after the take is saved. Idempotent, so a recovered job can run it again."""
+        cur, result = self.curriculum, rec["analysis"]
+        lesson = cur.get(rec["lesson_id"]) if rec.get("lesson_id") else None
+        lesson_result = result.get("lesson_result")
+        pid = lesson.get("program_id") if lesson else None
         adaptive.record_take(store, rec, now)             # skill evidence → spaced-review schedule, baseline
         out = {"attempt": rec, "analysis": result, "comparison": None, "lesson_result": lesson_result}
         if pid:
@@ -178,7 +227,8 @@ class AnalysisService:
             out["program"] = {k: st[k] for k in ("id", "title", "done", "total", "complete", "current_day",
                                                  "today_status", "streak", "milestones")}
         if rec["attempt_no"] > 1:
-            chain = store.chain(rec["chain_id"])
-            out["comparison"] = insights.compare(chain[-2], rec, cache=store)
-            out["first_vs_latest"] = insights.compare(chain[0], rec, cache=store) if len(chain) > 2 else None
+            chain = [t for t in store.chain(rec["chain_id"]) if t["attempt_no"] < rec["attempt_no"]]  # takes before it
+            if chain:
+                out["comparison"] = insights.compare(chain[-1], rec, cache=store)
+                out["first_vs_latest"] = insights.compare(chain[0], rec, cache=store) if len(chain) > 1 else None
         return out
