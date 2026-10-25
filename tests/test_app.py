@@ -1389,14 +1389,14 @@ def _once(fn, *, after=False):
     return wrapper
 
 
-def _manual_job(app_module, us, *, audio=False, key="crash-key-0001", transcript=STRONG):
+def _manual_job(app_module, us, *, audio=False, key="crash-key-0001", transcript=STRONG, **req_extra):
     """A queued job created exactly as `submit` would, but without starting the app's worker threads."""
     import uuid as _uuid
     from datetime import datetime
     from coach.jobs import JobRunner, request_hash
     from coach.schemas import AnalyzeRequest
     runner = JobRunner(app_module.store, app_module.service, workers=1)      # driven by hand: never started
-    req = AnalyzeRequest(transcript=transcript, prompt=PROMPT, idempotency_key=key)
+    req = AnalyzeRequest(**{"transcript": transcript, "prompt": PROMPT, "idempotency_key": key, **req_extra})
     wav = _speechlike_wav([("q", .3), ("s", 5), ("q", .3)]) if audio else None
     x = app_module.service.decode_upload(wav) if audio else None
     jid = str(_uuid.uuid4())
@@ -1717,3 +1717,222 @@ def test_recording_uses_the_take_controller():
     src = (Path(__file__).parent.parent / "static" / "js" / "recording.js").read_text()
     assert "takes.run(" in src and "takes.resume(" in src and "if (takes.busy) return;" in src
     assert "idemKey" not in src
+
+
+# ----------------------------------------------------------------------------- v9.2: deletion races
+def _comparison_rows(app_module, attempt_id):
+    with app_module.store._conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM comparisons WHERE base_id=? OR current_id=?",
+                            (attempt_id, attempt_id)).fetchone()[0]
+
+
+@pytest.mark.parametrize("target", ["previous", "first"])
+@pytest.mark.parametrize("when", ["before_complete", "after_complete"])
+def test_finishing_retry_job_never_restores_a_deleted_comparison(tmp_path, monkeypatch, target, when):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(c)
+    _signup(bob, "bob@example.com")
+    us = _user(app_module)
+    t1 = c.post("/api/analyze", json={"transcript": WEAK + SECRET, "prompt": PROMPT}).json()["attempt"]
+    t2 = c.post("/api/analyze", json={"transcript": STRONG + SECRET, "prompt": PROMPT,
+                                      "chain_id": t1["chain_id"]}).json()["attempt"]
+    bob.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT})
+    runner, jid = _manual_job(app_module, us, chain_id=t1["chain_id"])        # take 3 of the chain
+    gone, kept = (t2, t1) if target == "previous" else (t1, t2)
+    gone_field, kept_field = ("comparison", "first_vs_latest") if target == "previous" else ("first_vs_latest", "comparison")
+    real = runner.jobs.complete
+
+    def complete(job_id, result, attempt_id):
+        assert result[gone_field]["base_id"] == gone["id"]                 # the stale in-memory comparison
+        if when == "before_complete":
+            assert c.delete(f"/api/attempts/{gone['id']}").json()["ok"]
+        real(job_id, result, attempt_id)
+        if when == "after_complete":
+            assert c.delete(f"/api/attempts/{gone['id']}").json()["ok"]
+    monkeypatch.setattr(runner.jobs, "complete", complete)
+    runner.run_one(jid)
+
+    job = c.get(f"/api/jobs/{jid}").json()
+    assert job["status"] == "completed" and job["quota"] == "consumed" and job["error_code"] is None
+    assert job["attempt_id"] == job["result"]["attempt"]["id"]               # the valid current take stays
+    assert job["result"][gone_field] is None
+    assert job["result"][kept_field]["base_id"] == kept["id"]               # the other comparison is still valid
+    everything = json.dumps([c.get("/api/jobs").json(), job, c.get("/api/history").json()])
+    assert gone["id"] not in everything
+    assert _comparison_rows(app_module, gone["id"]) == 0 and _comparison_rows(app_module, kept["id"]) >= 1
+    assert c.get("/api/usage").json()["used"] == 3 and bob.get("/api/usage").json()["used"] == 1
+    assert len(bob.get("/api/history").json()) == 1
+
+
+def test_comparison_cache_write_racing_a_delete_is_dropped(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    t1 = c.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT}).json()["attempt"]
+    runner, jid = _manual_job(app_module, us, chain_id=t1["chain_id"])
+    real = app_module.store.put_comparison
+
+    def put(base_id, current_id, narrative, user_id=None):                 # the user deletes between compare + cache
+        assert c.delete(f"/api/attempts/{base_id}").json()["ok"]
+        return real(base_id, current_id, narrative, user_id)
+    monkeypatch.setattr(app_module.store, "put_comparison", put)
+    runner.run_one(jid)
+    job = c.get(f"/api/jobs/{jid}").json()
+    assert job["status"] == "completed" and job["result"]["comparison"] is None
+    assert _comparison_rows(app_module, t1["id"]) == 0
+    # a valid pair still caches; another user can't cache against someone else's takes
+    monkeypatch.setattr(app_module.store, "put_comparison", real)
+    a = c.post("/api/analyze", json={"transcript": WEAK, "prompt": PROMPT}).json()["attempt"]
+    b = c.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT, "chain_id": a["chain_id"]}).json()["attempt"]
+    assert us.get_comparison(a["id"], b["id"]) is not None
+    bob = TestClient(app_module.app)
+    _signup(bob, "bob@example.com")
+    bob_store = _user(app_module, "bob@example.com")
+    bob_store.put_comparison(a["id"], b["id"], {"summary": "x"})
+    assert bob_store.get_comparison(a["id"], b["id"]) is None
+
+
+def _plain_take(us, **kw):
+    from coach.analysis import DIMENSIONS
+    score = kw.pop("score", 70)
+    return us.add_attempt(mode="Interview", prompt=kw.pop("prompt", PROMPT), transcript=STRONG, challenge_mode=False,
+                          duration_seconds=None, analysis={"scores": {d: score for d in DIMENSIONS}}, **kw)
+
+
+@pytest.mark.parametrize("when", ["before_record", "after_record"])
+def test_finishing_job_never_restores_deleted_skill_evidence_or_baseline(tmp_path, monkeypatch, when):
+    from coach import adaptive
+    from coach.adaptive import BASELINE
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c, bob = TestClient(app_module.app), TestClient(app_module.app)
+    _signup(c)
+    _signup(bob, "bob@example.com")
+    us = _user(app_module)
+    b0, b1 = BASELINE[0], BASELINE[1]
+    c.post("/api/analyze", json={"transcript": STRONG, "kind": "baseline", "prompt": b1["prompt"], "mode": b1["mode"]})
+    bob.post("/api/analyze", json={"transcript": STRONG, "prompt": PROMPT})
+    bob_skills = _skill_reviews(_user(app_module, "bob@example.com"))
+    runner, jid = _manual_job(app_module, us, transcript=STRONG + SECRET, kind="baseline", prompt=b0["prompt"],
+                              mode=b0["mode"])
+    real = adaptive.record_take
+
+    def record(store, rec, now):
+        if when == "before_record":                                        # stale in-memory take after deletion
+            assert c.delete(f"/api/attempts/{rec['id']}").json()["ok"]
+        real(store, rec, now)
+        if when == "after_record":
+            assert c.delete(f"/api/attempts/{rec['id']}").json()["ok"]
+    monkeypatch.setattr(adaptive, "record_take", record)
+    runner.run_one(jid)
+
+    assert set(_skill_reviews(us).values()) == {1}                         # only the remaining take counts
+    skills = us.meta_get("skills")
+    assert all(a["id"] for a in us.all_chronological())
+    assert set(skills["_applied"]) == {a["id"] for a in us.all_chronological()}
+    base = c.get("/api/baseline").json()
+    assert b0["key"] not in us.meta_get("baseline")["items"] and not base["items"][0]["done"] and base["items"][1]["done"]
+    job = c.get(f"/api/jobs/{jid}").json()
+    assert job["error_code"] == "deleted" and job["result"] is None and job["quota"] == "consumed"
+    assert "zebracorn" not in json.dumps([job, c.get("/api/jobs").json(), c.get("/api/skills").json(), base])
+    assert c.get("/api/usage").json()["used"] == 2
+    assert _skill_reviews(_user(app_module, "bob@example.com")) == bob_skills  # other user untouched
+
+
+def test_stale_record_take_and_other_users_ids_are_ignored(tmp_path, monkeypatch):
+    from datetime import datetime
+    from coach import adaptive
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    for e in ("ada@example.com", "bob@example.com"):
+        _signup(TestClient(app_module.app), e)
+    ada, bob = _user(app_module), _user(app_module, "bob@example.com")
+    now = datetime.now().astimezone()
+    take = _plain_take(ada)
+    adaptive.record_take(bob, take, now)                                    # not Bob's take: no evidence for Bob
+    assert bob.meta_get("skills") is None
+    ada.delete(take["id"])
+    adaptive.record_take(ada, take, now)                                    # deleted: nothing comes back
+    assert (ada.meta_get("skills") or {}).get("structure") is None
+    keep = _plain_take(ada)
+    adaptive.record_take(ada, keep, now)
+    adaptive.record_take(ada, keep, now)                                    # recovery: still exactly once
+    assert set(_skill_reviews(ada).values()) == {1}
+
+
+def test_concurrent_skill_updates_are_not_lost(tmp_path, monkeypatch):
+    """Two jobs finish at once for one user: the second update must see the first (no lost update)."""
+    import threading
+    from datetime import datetime
+    from coach import adaptive
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    _signup(TestClient(app_module.app))
+    us = _user(app_module)
+    now = datetime.now().astimezone()
+    a, b = _plain_take(us), _plain_take(us)
+    inside, release, b_started = threading.Event(), threading.Event(), threading.Event()
+    real_apply = adaptive._apply
+
+    def slow_apply(skills, attempt, tz):
+        if attempt["id"] == a["id"]:
+            inside.set()                                                    # A has read the schedule…
+            assert release.wait(10)                                         # …and holds until B is on its way
+        return real_apply(skills, attempt, tz)
+    monkeypatch.setattr(adaptive, "_apply", slow_apply)
+    ta = threading.Thread(target=adaptive.record_take, args=(us, a, now))
+    ta.start()
+    assert inside.wait(10)
+
+    def run_b():
+        b_started.set()
+        adaptive.record_take(us, b, now)
+    tb = threading.Thread(target=run_b)
+    tb.start()
+    assert b_started.wait(10)
+    release.set()
+    ta.join(10)
+    tb.join(10)
+    assert not ta.is_alive() and not tb.is_alive()
+    assert set(_skill_reviews(us).values()) == {2}
+    assert set(us.meta_get("skills")["_applied"]) == {a["id"], b["id"]}
+
+
+def test_delete_waits_for_an_in_flight_skill_update(tmp_path, monkeypatch):
+    """A delete that arrives while a skill update is mid-transaction is applied after it, and wins."""
+    import threading
+    from datetime import datetime
+    from coach import adaptive
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    _signup(c)
+    us = _user(app_module)
+    now = datetime.now().astimezone()
+    keep, doomed = _plain_take(us, score=90), _plain_take(us, score=40)
+    adaptive.record_take(us, keep, now)
+    inside, release, deleting = threading.Event(), threading.Event(), threading.Event()
+    real_apply = adaptive._apply
+
+    def slow_apply(skills, attempt, tz):
+        if attempt["id"] == doomed["id"] and not inside.is_set():
+            inside.set()
+            assert release.wait(10)
+        return real_apply(skills, attempt, tz)
+    monkeypatch.setattr(adaptive, "_apply", slow_apply)
+    worker = threading.Thread(target=adaptive.record_take, args=(us, doomed, now))
+    worker.start()
+    assert inside.wait(10)
+    result = {}
+
+    def delete():
+        deleting.set()
+        result["r"] = c.delete(f"/api/attempts/{doomed['id']}").status_code
+    d = threading.Thread(target=delete)
+    d.start()
+    assert deleting.wait(10)
+    release.set()
+    worker.join(10)
+    d.join(10)
+    assert result["r"] == 200
+    skills = us.meta_get("skills")
+    assert skills["_applied"] == [keep["id"]] and set(_skill_reviews(us).values()) == {1}
+    assert skills["structure"]["last_score"] == 90                          # the deleted 40 left no trace

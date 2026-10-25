@@ -159,9 +159,27 @@ Verification: 107 passed, 1 skipped (live). 17 of the 18 new backend tests fail 
 one covers cleanup that already worked). Browser (1280px, 390px): forced failure → new key; aborted request →
 same key on retry; double-click → one POST, one job; no console errors besides the aborted request.
 
+## v9.2 — Deletion races ✅
+Both verified with hook-driven tests that failed before the fix (6 of 10 new tests; the rest guard behaviour
+that already held — deletion after completion, and a delete arriving during an update not deadlocking).
+1. **Stale comparison restored by a finishing retry job.** `JobStore.complete()` now runs
+   `_drop_deleted_comparisons` inside its `BEGIN IMMEDIATE`: `comparison` / `first_vs_latest` are dropped if either
+   referenced take is gone for the job's user. `Store.put_comparison` is a single `INSERT … SELECT … WHERE EXISTS
+   (base) AND EXISTS (current)` (user-scoped), so a cache write racing a deletion can't resurrect a narrative.
+   Deletion and completion are serialized by SQLite's write lock, so whichever commits second sees the other.
+2. **Stale adaptive evidence restored by a finishing job.** `Store.transaction(user_id)` yields a `Txn`
+   (same connection: `attempt_exists`, `all_chronological`, `meta_get/set`, user-scoped). `record_take` does the
+   existence check, `_applied` check, schedule write and baseline write in that one transaction.
+   `Store.delete(after=…)` runs `rebuild_after_delete(tx, …)` inside the deletion transaction (this also removes
+   the old crash window between deleting and rebuilding). Read-modify-write under `BEGIN IMMEDIATE` also prevents
+   lost updates between concurrent jobs (found by the new tests).
+   Tests use hooks (wrapped `complete` / `record_take` / `put_comparison`) and `threading.Event` barriers — no sleeps.
+
+Verification: 117 passed, 1 skipped (×5); JS 10/10.
+
 ## Status & remaining limitations
-- Commits on the Mac: phase 1 `d7431b3`, phase 2 `882e662`, phase 3 `de46a2f`, phases 4–5 `699683a`, v9.1 review
-  fixes in the commit that follows.
+- Commits on the Mac: phase 1 `d7431b3`, phase 2 `882e662`, phase 3 `de46a2f`, phases 4–5 `699683a`, v9.1 `8e60772`,
+  v9.2 deletion-race fixes in the commit that follows.
 - Not verified here: a live AI-provider run (`RUN_LIVE_EVAL=1 pytest -m live`) and real-microphone Whisper
   timestamps in a browser (covered by unit tests with synthetic word timings).
 - Single-process design: the worker pool lives in the app process — run one uvicorn worker. Moving to
@@ -170,9 +188,9 @@ same key on retry; double-click → one POST, one job; no console errors besides
   the take is saved, nothing repeats.
 - Takes saved by jobs before schema 4 that were *already* duplicated by a past recovery aren't merged — the
   migration only links each completed job to the take it reports.
-- Deletion reconciliation is two steps: the take/job/comparison changes are one transaction; the skill-schedule
-  rebuild runs right after. A crash in between leaves the schedule counting the deleted take until the next deletion.
-  The rebuild uses the deleting user's current timezone for take dates.
+- The skill-schedule rebuild after a deletion uses the deleting user's current timezone for take dates.
+- Skill-review and deletion transactions serialize all writers briefly (SQLite has one write lock); a user with a
+  very long history makes the deletion rebuild proportionally longer.
 - Jobs for unsaved analyses (`save=false`) and failed jobs keep their submitted request until the account is deleted.
 - Deleting a weekly challenge's first take leaves that week without a retained-skill score (later takes don't count).
 - Daily quota resets at midnight UTC (plans, unlocks and streaks use the user's timezone).

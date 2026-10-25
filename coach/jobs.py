@@ -91,6 +91,30 @@ def public_job(row: dict | None) -> dict | None:
             "result": json.loads(row["result_json"]) if row.get("result_json") else None}
 
 
+COMPARISON_FIELDS = ("comparison", "first_vs_latest")
+
+
+def _job_user(c, job_id):
+    r = c.execute("SELECT user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    return r["user_id"] if r else None
+
+
+def _drop_deleted_comparisons(c, result: dict, user_id) -> dict:
+    """Inside the completion transaction: a retry comparison whose takes no longer exist for this user (deleted
+    after the job built it in memory) is not persisted. Deletion and completion are serialized by the write lock,
+    so whichever commits second sees the other's effect."""
+    out = dict(result)
+    for k in COMPARISON_FIELDS:
+        cmp = out.get(k)
+        if not cmp:
+            continue
+        ids = [i for i in (cmp.get("base_id"), cmp.get("current_id")) if i]
+        if any(not c.execute("SELECT 1 FROM attempts WHERE id=? AND user_id IS ?", (i, user_id)).fetchone()
+               for i in ids):
+            out[k] = None
+    return out
+
+
 class JobStore:
     """SQL for jobs + usage. Uses the app Store's connection settings (WAL, busy timeout)."""
 
@@ -168,6 +192,8 @@ class JobStore:
                                              finished_at=?, updated_at=? WHERE id=? AND status='running'""",
                           (json.dumps({"redacted": True}), DELETED_MSG, now, now, job_id))
                 return
+            if result:                                # comparisons against takes deleted meanwhile are dropped
+                result = _drop_deleted_comparisons(c, result, _job_user(c, job_id))
             c.execute("""UPDATE jobs SET status='completed', result_json=?, attempt_id=?, audio_tmp=NULL,
                                          quota_state='consumed', finished_at=?, updated_at=?
                          WHERE id=? AND status='running'""", (json.dumps(result), attempt_id, now, now, job_id))

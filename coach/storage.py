@@ -212,13 +212,23 @@ class Store:
 
     DELETED_MSG = "This take was deleted. Start a new take to analyze it again."
 
-    def delete(self, attempt_id: str, user_id=None) -> bool:
+    @contextmanager
+    def transaction(self, user_id=None):
+        """One write transaction (``BEGIN IMMEDIATE``) for read-check-write logic that must not interleave with a
+        deletion or another writer: everything read inside stays true until commit. Don't call other Store
+        methods inside (they take the same lock); use the yielded ``Txn``."""
+        with _lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            yield Txn(c, user_id)
+
+    def delete(self, attempt_id: str, user_id=None, after=None) -> bool:
         """Delete one take and everything that still holds its content, in one transaction (user-scoped):
         - the job that saved it keeps its quota accounting but loses its request and result (marked 'deleted'),
           so polling, job listing and idempotency replay can't return the take or silently re-create it;
-        - other jobs' results drop retry comparisons made against it; cached comparison narratives go."""
-        with _lock, self._conn() as c:
-            c.execute("BEGIN IMMEDIATE")
+        - other jobs' results drop retry comparisons made against it; cached comparison narratives go;
+        - ``after(txn)`` runs in the same transaction once the row is gone (e.g. rebuilding learning state)."""
+        with self.transaction(user_id) as tx:
+            c = tx.c
             row = c.execute("SELECT job_id FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).fetchone()
             if not row:
                 return False
@@ -237,7 +247,10 @@ class Store:
                 c.execute("UPDATE jobs SET result_json=? WHERE id=?", (json.dumps(res), j["id"]))
             c.execute("DELETE FROM comparisons WHERE (base_id=? OR current_id=?) AND user_id IS ?",
                       (attempt_id, attempt_id, user_id))
-            return c.execute("DELETE FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).rowcount > 0
+            deleted = c.execute("DELETE FROM attempts WHERE id=? AND user_id IS ?", (attempt_id, user_id)).rowcount > 0
+            if deleted and after:
+                after(tx)
+            return deleted
 
     # ---------- reads ----------
     @staticmethod
@@ -393,9 +406,15 @@ class Store:
         return json.loads(r[0]) if r else None
 
     def put_comparison(self, base_id: str, current_id: str, narrative: dict, user_id=None):
+        """Cache a narrative — only while both takes still exist for this user. One statement, so it is atomic
+        with respect to a deletion (which removes the take and its cached narratives in one transaction)."""
         with _lock, self._conn() as c:
-            c.execute("INSERT OR REPLACE INTO comparisons VALUES (?,?,?,?,?)",
-                      (base_id, current_id, user_id, json.dumps(narrative), _now()))
+            c.execute("""INSERT OR REPLACE INTO comparisons
+                         SELECT ?, ?, ?, ?, ?
+                         WHERE EXISTS (SELECT 1 FROM attempts WHERE id=? AND user_id IS ?)
+                           AND EXISTS (SELECT 1 FROM attempts WHERE id=? AND user_id IS ?)""",
+                      (base_id, current_id, user_id, json.dumps(narrative), _now(),
+                       base_id, user_id, current_id, user_id))
 
     def for_user(self, user_id: str) -> "UserStore":
         return UserStore(self, user_id)
@@ -428,6 +447,31 @@ class Store:
             c.execute("INSERT OR REPLACE INTO meta VALUES ('legacy_imported', ?)", (str(n),))
 
 
+class Txn:
+    """Reads and writes inside one ``Store.transaction`` (same connection, user-scoped like ``UserStore``)."""
+
+    def __init__(self, conn, user_id):
+        self.c, self.user_id = conn, user_id
+
+    def _key(self, key):
+        return key if self.user_id is None else f"u:{self.user_id}:{key}"
+
+    def attempt_exists(self, attempt_id: str) -> bool:
+        return self.c.execute("SELECT 1 FROM attempts WHERE id=? AND user_id IS ?",
+                              (attempt_id, self.user_id)).fetchone() is not None
+
+    def all_chronological(self) -> list[dict]:
+        return [Store._row(r) for r in self.c.execute(
+            "SELECT * FROM attempts WHERE user_id IS ? ORDER BY created_at", (self.user_id,)).fetchall()]
+
+    def meta_get(self, key):
+        r = self.c.execute("SELECT value FROM meta WHERE key=?", (self._key(key),)).fetchone()
+        return json.loads(r["value"]) if r else None
+
+    def meta_set(self, key, value):
+        self.c.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (self._key(key), json.dumps(value)))
+
+
 class UserStore:
     """The slice of the store that belongs to one user. Same read/write API as ``Store`` for attempts, so the
     curriculum and insights code works unchanged, but every query is filtered by ``user_id``."""
@@ -438,8 +482,11 @@ class UserStore:
     def add_attempt(self, **kw) -> dict:
         return self._s.add_attempt(**kw, user_id=self.user_id)
 
-    def delete(self, attempt_id):
-        return self._s.delete(attempt_id, self.user_id)
+    def delete(self, attempt_id, after=None):
+        return self._s.delete(attempt_id, self.user_id, after)
+
+    def transaction(self):
+        return self._s.transaction(self.user_id)
 
     def get(self, attempt_id):
         return self._s.get(attempt_id, self.user_id)

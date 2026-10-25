@@ -50,11 +50,12 @@ def delete_attempt(attempt_id: str, request: Request, us: UserStore = Depends(us
     """Delete a take: its row, its job's stored request/result, comparisons against it, its recording — and its
     effect on the skill schedule and baseline. Quota already used stays used."""
     rec = us.get(attempt_id)
-    if not rec or not us.delete(attempt_id):
+    now = user_now(request)
+    # the learning-state rebuild runs inside the deletion's transaction: no skill update can land in between
+    if not rec or not us.delete(attempt_id, after=lambda tx: adaptive.rebuild_after_delete(tx, rec, now)):
         raise HTTPException(404, "Attempt not found")
     if rec.get("audio_path"):                         # delete the file only once the row is gone
         (c.audio_dir / Path(rec["audio_path"]).name).unlink(missing_ok=True)
-    adaptive.rebuild_after_delete(us, rec, user_now(request))
     return {"ok": True}
 
 

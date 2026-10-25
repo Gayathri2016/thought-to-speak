@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.2 — deletion races
+- A retry job finishing after you delete an earlier take no longer writes its comparison against that take back:
+  completion re-checks both comparison fields inside its transaction. Comparison-cache writes only land while both
+  takes exist (single atomic statement).
+- Skill-review updates run in one write transaction that first checks the take still exists, so a take deleted
+  while its job was finishing never counts again and its baseline slot isn't restored. The same transaction stops
+  two jobs finishing at once from overwriting each other's update.
+- Deleting a take now rebuilds skills and baseline inside the deletion's own transaction.
+
 ## v9.1 — reliability and deletion fixes
 - Crash-safe job finalization: each saved take records the job that created it (`attempts.job_id`, unique), so a
   job re-run after a crash or a failed completion reuses its saved take instead of saving (and charging) a second
