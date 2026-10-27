@@ -293,7 +293,7 @@ def _agreement(f: _Fixer, past_context: bool = False):
 BE_FIX = {("i", "is"): "am", ("i", "are"): "am", ("they", "is"): "are", ("we", "is"): "are", ("you", "is"): "are",
           ("he", "are"): "is", ("she", "are"): "is", ("it", "are"): "is", ("they", "was"): "were",
           ("we", "was"): "were", ("you", "was"): "were", ("he", "were"): "was", ("she", "were"): "was",
-          ("i", "were"): "was"}
+          ("i", "were"): "was", ("it", "were"): "was"}
 
 
 def _be(f: _Fixer, past_context: bool = False):

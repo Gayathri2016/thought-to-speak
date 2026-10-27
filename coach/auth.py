@@ -146,6 +146,8 @@ class RateLimiter:
 login_failures = RateLimiter(10, 15 * 60)
 # 5 new accounts per IP per hour.
 signups = RateLimiter(5, 60 * 60)
+# 10 guest sessions per IP per hour (each new browser that taps "try it first").
+guests = RateLimiter(10, 60 * 60)
 
 
 # ---------------------------------------------------------------- public beta
@@ -171,3 +173,28 @@ def daily_limit() -> int:
         return max(0, int(os.getenv("DAILY_TAKE_LIMIT", "60")))
     except ValueError:
         return 60
+
+
+# ---------------------------------------------------------------- guests
+GUEST_DAYS = 14   # guest practice is deleted after this, unless they create an account
+
+
+def is_guest(user: dict | None) -> bool:
+    from coach.storage import GUEST_DOMAIN
+    return bool(user) and (user.get("email") or "").endswith(GUEST_DOMAIN)
+
+
+def guests_enabled() -> bool:
+    return mode() == "accounts" and _flag("GUEST_MODE", "1")
+
+
+def guest_daily_limit() -> int:
+    """Takes per day before a guest is asked to create a (free) account."""
+    try:
+        return max(1, int(os.getenv("GUEST_TAKE_LIMIT", "3")))
+    except ValueError:
+        return 3
+
+
+def limit_for(user: dict | None) -> int:
+    return guest_daily_limit() if is_guest(user) else daily_limit()

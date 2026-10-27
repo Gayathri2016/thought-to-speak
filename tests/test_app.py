@@ -19,10 +19,12 @@ def _fresh_app(tmp_path, monkeypatch, **env):
     monkeypatch.setenv("TRANSCRIBE_PROVIDER", "none")
     monkeypatch.delenv("AUTH_MODE", raising=False)
     monkeypatch.delenv("DAILY_TAKE_LIMIT", raising=False)
+    for k in ("GUEST_MODE", "GUEST_TAKE_LIMIT", "BETA", "BETA_MAX_USERS"):
+        monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     from coach import auth
-    for lim in (auth.login_failures, auth.signups):
+    for lim in (auth.login_failures, auth.signups, auth.guests):
         lim._hits.clear()
     import app as app_module
     importlib.reload(app_module)
@@ -2280,3 +2282,80 @@ def test_security_headers_allow_what_the_app_uses(anon):
     assert "microphone=(self)" in r.headers["permissions-policy"]
     assert "strict-transport-security" not in r.headers                         # only sent over HTTPS
     assert "<script>" not in anon.get("/privacy").text                          # no inline scripts for CSP to block
+
+
+# ----------------------------------------------------------------------------- guest mode
+def test_guest_can_try_takes_then_upgrade_keeping_practice(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch, BETA="1", BETA_MAX_USERS="1", GUEST_TAKE_LIMIT="2").app)
+    cfg = c.get("/api/config").json()
+    assert cfg["guests"] is True and cfg["guest_take_limit"] == 2
+    g = c.post("/api/auth/guest").json()["user"]
+    assert g["guest"] is True and g["email"] is None
+    assert c.post("/api/auth/guest").json()["user"]["id"] == g["id"]           # same browser: same guest
+    me = c.get("/api/auth/me").json()["user"]
+    assert me["guest"] is True
+    for _ in range(2):
+        assert c.post("/api/analyze", json={"transcript": STRONG, "mode": "Interview"}).status_code == 200
+    over = c.post("/api/analyze", json={"transcript": STRONG})
+    assert over.status_code == 429 and "free account" in over.json()["detail"]
+    assert c.get("/api/usage").json()["limit"] == 2
+    # guests don't use up beta spots, and can't sign in (no password)
+    from coach.storage import GUEST_DOMAIN
+    assert c.post("/api/auth/login", json={"email": f"guest-{g['id']}{GUEST_DOMAIN}", "password": "!"}).status_code == 401
+    up = c.post("/api/auth/upgrade", json={"email": "Gia@Example.com", "password": "correct horse", "name": "Gia"})
+    assert up.status_code == 200, up.text
+    u = up.json()["user"]
+    assert u["id"] == g["id"] and u["guest"] is False and u["email"] == "gia@example.com"
+    assert len(c.get("/api/history").json()) == 2                              # practice carried over
+    assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 200   # normal limit now
+    assert c.post("/api/auth/upgrade", json={"email": "x@example.com", "password": "correct horse"}).status_code == 400
+    # the one beta spot is now taken: new sign-ups are full, but a new visitor can still try as a guest
+    other = TestClient(c.app)
+    assert other.post("/api/auth/signup", json={"email": "z@example.com", "password": "correct horse"}).status_code == 403
+    assert other.post("/api/auth/guest").status_code == 200
+    assert other.post("/api/auth/upgrade", json={"email": "z@example.com", "password": "correct horse"}).status_code == 403
+    fresh = TestClient(c.app)
+    fresh.post("/api/auth/guest")
+    taken = fresh.post("/api/auth/upgrade", json={"email": "gia@example.com", "password": "correct horse"})
+    assert taken.status_code in (403, 409)
+    # signing in from a guest browser switches to the real account
+    assert other.post("/api/auth/login", json={"email": "gia@example.com", "password": "correct horse"}).status_code == 200
+    assert other.get("/api/auth/me").json()["user"]["id"] == g["id"]
+
+
+def test_guest_can_delete_without_password_and_stale_guests_are_purged(tmp_path, monkeypatch):
+    app_module = _fresh_app(tmp_path, monkeypatch)
+    c = TestClient(app_module.app)
+    c.post("/api/auth/guest")
+    assert c.post("/api/analyze", json={"transcript": STRONG}).status_code == 200
+    assert c.request("DELETE", "/api/auth/account", json={"password": ""}).json()["ok"]
+    assert c.get("/api/history").status_code == 401
+    # a guest older than 14 days is removed with its practice; a real account of the same age is kept
+    from routes.auth import purge_stale_guests
+    store = app_module.store
+    old = store.create_guest()
+    real = _signup(TestClient(app_module.app), "keep@example.com")
+    with store._conn() as db:
+        db.execute("UPDATE users SET created_at='2020-01-01T00:00:00+00:00'")
+    assert purge_stale_guests(app_module.app.state.ctx) == 1
+    assert store.user(old["id"]) is None and store.user(real["id"]) is not None
+
+
+def test_guest_mode_can_be_turned_off_and_is_rate_limited(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch, GUEST_MODE="0").app)
+    assert c.get("/api/config").json()["guests"] is False
+    assert c.post("/api/auth/guest").status_code == 400
+    c = TestClient(_fresh_app(tmp_path / "r", monkeypatch, GUEST_MODE="1").app)
+    codes = [TestClient(c.app).post("/api/auth/guest").status_code for _ in range(11)]
+    assert codes[:10] == [200] * 10 and codes[10] == 429
+
+
+def test_mentor_keeps_time_lead_in_and_fixes_it_were():
+    from coach import rewrite
+    r = rewrite.corrected("um so yesterday I go to the library and uh I study for my exam for like three hours "
+                          "and it were really quiet", "Everyday Conversation")
+    assert r["full"] == "Yesterday, I went to the library. I studied for my exam for three hours. It was really quiet."
+    r = rewrite.corrected("so last weekend we go to the beach and my brother he swim a lot it were fun", "Everyday Conversation")
+    assert r["full"] == "Last weekend we went to the beach. My brother swam a lot. It was fun."
+    from coach import grammar
+    assert grammar.fix("if it were me I would go")[0].startswith("If it were")       # subjunctive is right

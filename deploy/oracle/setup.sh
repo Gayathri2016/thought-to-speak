@@ -108,6 +108,7 @@ install -m 644 "$APP/deploy/oracle/tts-backup.timer" /etc/systemd/system/tts-bac
 sed "s/__DOMAIN__/$DOMAIN/" "$APP/deploy/oracle/Caddyfile.template" > /etc/caddy/Caddyfile
 mkdir -p /var/log/caddy && chown caddy:caddy /var/log/caddy
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+chown -R caddy:caddy /var/log/caddy   # validate (as root) can create the log file; Caddy runs as "caddy"
 
 if [ -n "$DUCKDNS_TOKEN" ]; then
   say "Keeping $DOMAIN pointed at this server (DuckDNS, every 5 minutes)"

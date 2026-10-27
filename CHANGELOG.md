@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — try it before signing up
+
+- **Guest mode.** "Try it now — no account needed" on the welcome screen starts a guest session: up to 3 takes a
+  day (`GUEST_TAKE_LIMIT`), no email asked. "Save my progress" turns the guest into a real account in place, so the
+  takes, streak and today's goal carry over. Guests don't use beta spots, are rate-limited per network (10 an hour),
+  can delete their practice without a password, and are deleted automatically after 14 days. `GUEST_MODE=0` turns
+  it off.
+- **Welcome screen shows the mentor.** The example is now a real before/after from the built-in coach: what you
+  said, the grammar fixes, and the mentor's version in your words.
+- **Mentor fixes:** a short lead-in ("so yesterday…") stays with its sentence instead of becoming "Yesterday.";
+  "it were" → "it was" (but "if it were" is left alone); "…a lot it were fun" splits into two sentences.
+- Setup: Caddy's log folder is handed to the `caddy` user after the config check, so Caddy starts on a fresh server.
+
 ## Unreleased — free public beta
 - Hosting kit for a $0 beta on Oracle Cloud Always Free (`deploy/oracle/`): one-command `setup.sh` (Python env,
   Caddy with automatic HTTPS, firewall ports, hardened systemd service, swap on 1 GB servers, optional DuckDNS

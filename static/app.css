@@ -750,3 +750,21 @@ body.signed-out .tabs { display: none; }
 body.signed-out .site-foot { display: none; }
 .auth-privacy a { color: var(--accent); font-weight: 650; }
 @media (max-width: 640px) { .site-foot { padding-bottom: 96px; } }
+
+/* ---------------------------------------------------------------- guests: try first, sign up after */
+.guest-box { display: grid; gap: 8px; margin-bottom: 18px; }
+.guest-box .primary { justify-content: center; padding: 13px 16px; font-size: 15.5px; }
+.guest-box p { margin: 0; text-align: center; }
+.or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.or-line::before, .or-line::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.try-hero { margin: 0 0 22px; padding: 13px 20px; font-size: 15.5px; }
+.auth-back { display: inline-block; margin-bottom: 12px; color: var(--accent); font-weight: 650; }
+.guest-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 14px 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--ink);
+  font-size: 14px; }
+.guest-bar.done { background: var(--sun-soft); color: var(--sun-ink); }
+@media (max-width: 860px) {
+  .try-hero { width: 100%; justify-content: center; margin: 18px 0 0; }
+  .guest-box { display: none; }                      /* phones: the hero button already offers it */
+  .guest-bar .primary { width: 100%; justify-content: center; }
+}

@@ -43,6 +43,10 @@ runner = JobRunner(store, service)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     runner.start()       # recover interrupted jobs and start the analysis workers (also started lazily)
+    try:
+        auth_routes.purge_stale_guests(app.state.ctx)   # guest practice older than 14 days (also on each new guest)
+    except Exception:  # noqa: BLE001 — housekeeping must never stop the app from starting
+        pass
     yield
     runner.stop()
 

@@ -284,6 +284,7 @@ export async function analyze() {
   } catch (e) {
     // a network error keeps the take's key, so pressing Analyze again re-attaches to the same job
     $("status").textContent = e.status ? e.message : `${e.message || "Connection problem"} — press Analyze to try again.`;
+    if (e.status === 429) document.dispatchEvent(new CustomEvent("tts:limit", { detail: e.message }));
   } finally {
     state.analyzing = false;
     $("recordBtn").disabled = recordDisabled;
@@ -322,6 +323,7 @@ export function showJobResult(job) {
   $("status").textContent = !r.attempt ? "Analyzed (not saved)." : r.attempt.attempt_no > 1
     ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
   if (r.attempt) refreshDay({ celebrate: true });   // the day strip and the daily-goal moment
+  document.dispatchEvent(new Event("tts:take-done"));
   if (innerWidth < 900) $("resultsCard").scrollIntoView({ behavior: "smooth" });
 }
 

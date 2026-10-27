@@ -25,6 +25,7 @@
         <button id="accountBtn" class="icon-btn account-btn" aria-haspopup="true" aria-expanded="false" title="Account"></button>
         <div id="accountPop" class="account-pop hidden" role="menu">
           <div class="small"><b id="accountName"></b><div id="accountEmail" class="muted"></div></div>
+          <button id="saveAccountBtn" class="primary sm hidden" role="menuitem">Create free account</button>
           <button id="signOutBtn" class="ghost" role="menuitem">Sign out</button>
         </div>
       </div>
@@ -48,15 +49,17 @@
     <h2 class="auth-hero">Say it out loud.<br>Get one tip.<br>Say it better.</h2>
     <p class="auth-lead">A practice partner for the moments you want to get right — catching up with a friend,
       telling a story, speaking up at work. Two minutes a day is enough to hear the difference.</p>
-    <figure class="demo" aria-label="Example: a first take and a retry">
+    <button id="tryHero" class="primary try-hero hidden" type="button">Try it now — free, no sign-up</button>
+    <figure class="demo" aria-label="Example: what you said, and the mentor's version">
       <div class="demo-take">
-        <div class="demo-h"><span>Take 1</span><b>58</b></div>
-        <p>“Um, so, my weekend was fine I guess, we kind of went to the lake and stuff.”</p>
+        <div class="demo-h"><span>You said</span></div>
+        <p>“Um, so yesterday I go to the library and uh I study for my exam for like three hours and it were
+          really quiet.”</p>
       </div>
-      <div class="demo-tip"><span aria-hidden="true">💡</span> Lead with one vivid detail, then ask them back.</div>
+      <div class="demo-tip"><span aria-hidden="true">✏️</span> go → went · study → studied · were → was · 4 fillers gone</div>
       <div class="demo-take after">
-        <div class="demo-h"><span>Take 2</span><b>81</b></div>
-        <p>“We rented a tiny cabin by the lake and my nephew caught his first fish. How was yours?”</p>
+        <div class="demo-h"><span>Your mentor's version, in your words</span></div>
+        <p>“Yesterday, I went to the library. I studied for my exam for three hours. It was really quiet.”</p>
       </div>
     </figure>
     <ul class="auth-points">
@@ -66,6 +69,13 @@
     </ul>
   </section>
   <div class="auth-card card">
+    <div id="guestBox" class="guest-box hidden">
+      <button id="tryBtn" class="primary" type="button">Try it now — no account needed</button>
+      <p id="guestNote" class="muted small">Record a take and get feedback in under a minute. Create an account
+        any time to keep your progress.</p>
+      <div class="or-line"><span>or</span></div>
+    </div>
+    <a href="#" id="authBack" class="small auth-back hidden">← Back to practice</a>
     <h2 id="authTitle">Create your account</h2>
     <p class="muted small" id="authSub">Practice out loud, get coached on content and voice, and track your progress.</p>
     <form id="authForm" novalidate>
@@ -88,6 +98,10 @@
 </div>
 
 <main class="wrap" id="appMain">
+  <section id="guestBar" class="guest-bar hidden" aria-live="polite">
+    <span id="guestBarText">You're practicing as a guest.</span>
+    <button id="guestSave" class="primary sm" type="button">Save my progress — free</button>
+  </section>
   <section id="dayStrip" class="day-strip hidden" aria-live="polite"></section>
   <!-- ============================== PRACTICE ============================== -->
   <section id="tab-learn" class="tabpanel">
@@ -431,8 +445,7 @@
           <a class="ghost btn-link" href="/api/export">⤓ Export JSON</a>
         </div>
       </div>
-      <p class="muted small">Your history and recordings are private to your account. Transcripts are sent to the AI
-        provider only for coaching.</p>
+      <p class="muted small">Your history and recordings are private to your account. <a href="/privacy">Privacy</a></p>
       <div id="historyList"></div>
     </div>
     <div class="card danger-zone hidden" id="dangerZone">

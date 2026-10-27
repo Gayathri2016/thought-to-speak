@@ -31,6 +31,7 @@ def config():
     return {"provider": p, "model": llm.model_name(p), "modes": public_modes(),
             "dimensions": analysis.DIMENSION_LABELS, "transcriber": transcribe.available(),
             "auth_mode": auth.mode(), "daily_take_limit": auth.daily_limit(),
+            "guests": auth.guests_enabled(), "guest_take_limit": auth.guest_daily_limit(),
             "beta": {k: v for k, v in auth.beta().items() if k != "max_users"}}
 
 
@@ -74,10 +75,13 @@ def _submit(c: Context, us: UserStore, req: AnalyzeRequest, request: Request, au
         raise HTTPException(422, "Idempotency-Key must be 8–80 characters.")
     try:
         c.service.validate(us, req, now, has_audio=audio is not None)
-        return c.runner.submit(us, req, now, auth.daily_limit(), audio=audio, audio_bytes=audio_bytes, key=key)
+        return c.runner.submit(us, req, now, auth.limit_for(us.user), audio=audio, audio_bytes=audio_bytes, key=key)
     except InputError as e:
         raise HTTPException(e.status, e.message)
     except QuotaExceeded as e:
+        if auth.is_guest(us.user):
+            raise HTTPException(429, f"That's your {auth.guest_daily_limit()} free guest takes for today. "
+                                     "Create a free account to keep practicing and save your progress.")
         raise HTTPException(429, str(e))
     except IdempotencyConflict as e:
         raise HTTPException(409, str(e))
@@ -153,7 +157,7 @@ def get_job(job_id: str, us: UserStore = Depends(user_store), c: Context = Depen
 
 @router.get("/api/usage", response_model=UsageOut)
 def usage(us: UserStore = Depends(user_store), c: Context = Depends(get_ctx)):
-    limit = auth.daily_limit()
+    limit = auth.limit_for(us.user)
     used = c.runner.jobs.usage(us.user_id)
     return {"used": used, "limit": limit or None, "remaining": max(0, limit - used) if limit else None,
             "resets": "midnight UTC"}

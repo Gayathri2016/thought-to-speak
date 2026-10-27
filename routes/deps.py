@@ -36,7 +36,9 @@ def current_user(request: Request) -> dict:
 
 
 def user_store(request: Request, user: dict = Depends(current_user)) -> UserStore:
-    return get_ctx(request).store.for_user(user["id"])
+    us = get_ctx(request).store.for_user(user["id"])
+    us.user = user
+    return us
 
 
 def user_tz(request: Request) -> tzinfo:

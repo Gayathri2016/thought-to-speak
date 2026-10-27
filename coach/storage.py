@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS comparisons (
 """
 
 
+GUEST_DOMAIN = "@guest.invalid"   # reserved TLD: can never be a real address
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -354,8 +357,30 @@ class Store:
         return dict(r) if r else None
 
     def user_count(self) -> int:
+        """Real accounts (guests don't take beta spots)."""
         with self._conn() as c:
-            return c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            return c.execute("SELECT COUNT(*) FROM users WHERE email NOT LIKE ?", (f"%{GUEST_DOMAIN}",)).fetchone()[0]
+
+    # ---- guests: try the app before signing up. A guest is a normal user row with a placeholder email and no
+    # password ("!" never verifies), so every feature works unchanged and upgrading keeps the practice.
+    def create_guest(self) -> dict:
+        uid = str(uuid.uuid4())
+        with _lock, self._conn() as c:
+            c.execute("INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?,?,?,?,?)",
+                      (uid, f"guest-{uid}{GUEST_DOMAIN}", None, "!", _now()))
+        return self.user(uid)
+
+    def upgrade_guest(self, user_id: str, email: str, password_hash: str, name: str | None) -> dict | None:
+        """Turn a guest into a real account in place (same id, so takes and streak carry over)."""
+        with _lock, self._conn() as c:
+            n = c.execute("UPDATE users SET email=?, password_hash=?, name=? WHERE id=? AND email LIKE ?",
+                          (email, password_hash, name, user_id, f"%{GUEST_DOMAIN}")).rowcount
+        return self.user(user_id) if n else None
+
+    def stale_guests(self, older_than_iso: str) -> list[str]:
+        with self._conn() as c:
+            return [r[0] for r in c.execute("SELECT id FROM users WHERE email LIKE ? AND created_at < ?",
+                                            (f"%{GUEST_DOMAIN}", older_than_iso))]
 
     def user_by_email(self, email: str) -> dict | None:
         with self._conn() as c:
@@ -482,6 +507,7 @@ class UserStore:
 
     def __init__(self, store: Store, user_id: str):
         self._s, self.user_id = store, user_id
+        self.user = None   # the signed-in user's row, set by the request dependency
 
     def add_attempt(self, **kw) -> dict:
         return self._s.add_attempt(**kw, user_id=self.user_id)

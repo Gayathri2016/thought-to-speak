@@ -105,7 +105,7 @@ def _split_clauses(words: list[str]) -> list[list[str]]:
                                      (nxt2 in {"he", "she", "they"} and not _verbish(prev)))) \
             or (k == "me" and nxt == "and") \
             or (k == "there" and nxt in {"was", "were", "is", "are"}) \
-            or (k == "it" and nxt in {"was", "is", "'s", "felt", "made"})
+            or (k == "it" and nxt in {"was", "were", "is", "'s", "felt", "made"})
         if not starts:
             continue
         j = i
@@ -131,6 +131,11 @@ def _split_clauses(words: list[str]) -> list[list[str]]:
             merged[-1] = merged[-1] + p
         else:
             merged.append(p)
+    # a short lead-in with no verb ("um so yesterday | I went…") belongs to the sentence after it
+    if len(merged) > 1 and len([w for w in merged[0] if _key(w) not in LEAD_TRIM]) < 3 \
+            and not any(_verbish(_key(w)) for w in merged[0]):
+        merged[1] = merged[0] + merged[1]
+        merged.pop(0)
     return merged
 
 
