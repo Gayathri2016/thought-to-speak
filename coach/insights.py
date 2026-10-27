@@ -185,14 +185,14 @@ def recommend(attempts: list[dict]) -> dict:
     scored = [a for a in attempts if all(a.get(d) is not None for d in DIMENSIONS)]
     recent = scored[-10:]
     if not recent:
-        mode = "Interview"
+        mode = "Everyday Conversation"
         return {
             "kind": "baseline", "mode": mode, "dimension": None,
             "title": "Record your baseline",
             "why": "No full-scored attempts yet. A baseline lets the coach find your weak areas.",
             "evidence": None,
             "steps": ["Answer the prompt naturally — don't script it.", "Analyze, then retry once."],
-            "constraint": "Speak for 60–90 seconds.", "challenge_mode": False,
+            "constraint": "Speak for 30–60 seconds.", "challenge_mode": False,
             "prompt": random_prompt(mode), "secondary_tips": [],
         }
 

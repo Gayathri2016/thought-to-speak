@@ -1,5 +1,5 @@
 {
- "heuristic_version": "h8",
+ "heuristic_version": "h10",
  "cases": {
   "int-disagree-strong": {
    "overall": 79,

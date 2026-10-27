@@ -8,10 +8,23 @@ well and keeps the local version for anything missing, so the panel is always co
 import re
 
 from . import corrections as corrections_mod
+from . import rewrite
 from . import metrics
 
 # Who is listening, per mode — the evaluator speaks as this person.
 ROLES = {
+    "Everyday Conversation": {"role": "Your conversation partner", "question": "Was it easy to respond to you?",
+                              "labels": {"strong_yes": "Easy to connect", "lean_yes": "Welcoming",
+                                         "lean_no": "Needs an opening", "no": "Try a simpler start"}},
+    "Tell a Story": {"role": "Your listener", "question": "Could they follow your story?",
+                     "labels": {"strong_yes": "Easy to follow", "lean_yes": "Mostly clear",
+                                "lean_no": "Needs a clearer thread", "no": "Try a simpler story"}},
+    "Share an Opinion": {"role": "Your listener", "question": "Did they understand your view and your reason?",
+                         "labels": {"strong_yes": "Clear and supported", "lean_yes": "Mostly clear",
+                                    "lean_no": "Needs a reason", "no": "Start with your view"}},
+    "Difficult Conversations": {"role": "The other person", "question": "Was your request clear and respectful?",
+                                "labels": {"strong_yes": "Clear and considerate", "lean_yes": "Mostly clear",
+                                           "lean_no": "Needs a clearer request", "no": "Try a gentler opening"}},
     "Interview": {"role": "Interviewer", "question": "Would this answer move you to the next round?",
                   "labels": {"strong_yes": "Strong yes", "lean_yes": "Lean yes", "lean_no": "Lean no",
                              "no": "Not yet"}},
@@ -38,6 +51,9 @@ _NUM_UNIT = re.compile(r"\$?\d[\d,.]*\s?(?:%|percent|x\b|k\b|ms\b|seconds|minute
                        r"customers|dollars)", re.I)
 # What each common framework part should contain — used to make "missing part" fixes concrete.
 PART_HINTS = {
+    "Opening": "a friendly hello and a little context", "Detail": "one thing about your experience or interest",
+    "Question": "an easy question that invites them to share", "Point": "your view or need in plain words",
+    "Reason": "why it matters to you", "Example": "a familiar example", "Point again": "your main idea, briefly",
     "Situation": "where and when, in one sentence", "Task": "what you were responsible for",
     "Action": "what you did — say “I”, not “we”", "Result": "the outcome, with a number",
     "Lesson": "what you learned or would do differently", "Decision / Ask": "your decision or ask, first",
@@ -60,9 +76,12 @@ def split_sentences(text: str) -> list[str]:
     text = (text or "").strip()
     if not text:
         return []
-    parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    parts = [s.strip() for s in metrics.SENT_SPLIT.split(text) if s.strip()]
     if len(parts) > 1 or len(text.split()) <= 25:
         return parts
+    clauses = [" ".join(w) for w in rewrite._raw_sentences(text)]
+    if len(clauses) > 1 and max(len(c.split()) for c in clauses) <= 30:
+        return clauses
     out, cur = [], []
     for w in text.split():
         joiner = w.lower().strip(",") in {"and", "so", "but", "because", "then"}
@@ -134,6 +153,18 @@ def _follow_up(mode: str, text: str, parts: list[dict], m: dict) -> str:
     low = text.lower()
     missing = {p["label"] for p in parts if p["status"] == "missing"}
     num = _NUM_UNIT.search(text)
+    if mode == "Everyday Conversation":               # what a friend would actually ask back
+        hl = rewrite.highlights(text, 1)
+        if rewrite.answer_kind(text) == "day":
+            return f"Oh nice — how did {hl[0]} go?" if hl else "What was the best part of your day?"
+        return f"What did you like most about {hl[0]}?" if hl else "Oh really — what happened next?"
+    everyday = {
+        "Tell a Story": "How did that experience change the way you do things?",
+        "Share an Opinion": "Can you share an everyday example that supports your view?",
+        "Difficult Conversations": "What would be a fair next step for both of you?",
+    }
+    if mode in everyday:
+        return everyday[mode]
     if mode == "Interview":
         if "Result" in missing:
             return "What was the outcome — and how did you measure it?"
@@ -198,10 +229,12 @@ def evaluator(mode: str, sents: list[str], text: str, scores: dict, parts: list[
 
     used = set()
     opening_issue = bool(first) and (_warmup(first) or (parts and parts[0]["status"] == "missing" and mode != "Interview"))
+    warm = bool(first) and _warmup(first)
     if opening_issue:
         used.add(_short(first))
         doubts.append({"quote": _short(first), "why": "The opening is warm-up, not your point — I'm still waiting "
-                                                      "to hear what you're telling me."})
+                                                      "to hear what you're telling me." if warm else
+                       "You went straight into details — one opening line would tell me what this is about."})
     hedge = _pick(sents, _hedged, used)
     if hedge:
         doubts.append({"quote": _short(hedge), "why": "Hedging here makes you sound unsure of your own work."})
@@ -223,7 +256,7 @@ def evaluator(mode: str, sents: list[str], text: str, scores: dict, parts: list[
     if missing:
         lab = missing[0]
         to_yes.append(f"Add the {lab} part" + (f" — {PART_HINTS[lab]}." if lab in PART_HINTS else "."))
-    if opening_issue:
+    if opening_issue and warm:
         to_yes.append("Cut the warm-up and open with your main point.")
     if not m["has_numbers"] and mode in ("Interview", "FDE / Customer", "Leadership"):
         to_yes.append("Put a number on the outcome.")
@@ -271,8 +304,11 @@ DRILLS = {
 
 
 def coach(mode: str, sents: list[str], scores: dict, parts: list[dict], order_note: str | None,
-          m: dict, framework: list[str]) -> dict:
+          m: dict, framework: list[str], off_topic: dict | None = None) -> dict:
     fixes, used = [], set()
+    if off_topic:                                     # answering the question beats every polish fix
+        fixes.append({"quote": None, "problem": off_topic["message"], "fix": off_topic["retry"]
+                      + (f" For example: “{off_topic['starter']}”" if off_topic.get("starter") else "")})
     first = sents[0] if sents else ""
     if first and (_warmup(first) or len(first.split()) > 30):
         used.add(_short(first))
@@ -280,7 +316,9 @@ def coach(mode: str, sents: list[str], scores: dict, parts: list[dict], order_no
         fixes.append({"quote": _short(first), "problem": "Your opening is warm-up — the point arrives late.",
                       "fix": f"Drop “{opener}…” and open with your "
                              f"{framework[0] if framework else 'main point'} in one crisp sentence."})
-    filler = _pick(sorted(sents, key=_filler_n, reverse=True), lambda s: _filler_n(s) >= 2, used)
+    # fillers make the top fixes only when they're dense (2 in a 100-word stretch is not the problem)
+    filler = _pick(sorted(sents, key=_filler_n, reverse=True),
+                   lambda s: _filler_n(s) >= 3 or (_filler_n(s) >= 2 and len(s.split()) <= 25), used)
     if filler:
         fixes.append({"quote": _short(filler), "problem": f"{_filler_n(filler)} fillers in one sentence.",
                       "fix": "Say this sentence again with a silent pause where each filler was."})
@@ -288,13 +326,16 @@ def coach(mode: str, sents: list[str], scores: dict, parts: list[dict], order_no
     if hedge:
         fixes.append({"quote": _short(hedge), "problem": "Hedging (“I think”, “maybe”) weakens it.",
                       "fix": "Say it as a statement. Keep a hedge only where you genuinely aren't sure."})
-    long_s = _pick(sorted(sents, key=lambda s: len(s.split()), reverse=True), lambda s: len(s.split()) > 35, used)
+    long_s = _pick(sorted(sents, key=lambda s: len(s.split()), reverse=True),
+                   lambda s: len(s.split()) > 35 and m.get("punctuated"), used)   # unpunctuated speech-to-text: not their fault
     if long_s:
         fixes.append({"quote": _short(long_s), "problem": f"A {len(long_s.split())}-word sentence is hard to follow.",
                       "fix": "Split it into two or three short sentences — one idea each."})
     for p in parts:
         if p["status"] == "missing":
             hint = PART_HINTS.get(p["label"])
+            if mode == "Tell a Story" and p["label"] == "Result":
+                hint = "how it turned out and what it meant to you"
             fixes.append({"quote": None, "problem": f"No “{p['label']}” part.",
                           "fix": f"Add one sentence for {p['label']}" + (f": {hint}." if hint else ".")})
     if order_note:
@@ -303,7 +344,8 @@ def coach(mode: str, sents: list[str], scores: dict, parts: list[dict], order_no
         fixes.append({"quote": None, "problem": "No numbers anywhere.",
                       "fix": "Quantify one result: a percentage, time saved, money or people affected."})
 
-    weakest = min(("structure", "clarity", "relevance", "answer_quality", "delivery"), key=lambda d: scores[d])
+    weakest = "relevance" if off_topic else \
+        min(("structure", "clarity", "relevance", "answer_quality", "delivery"), key=lambda d: scores[d])
     # A short game plan for the next take — the single biggest fix plus habits, not a repeat of the fix list.
     do_next = [fixes[0]["fix"]] if fixes else ["Keep the same shape and cut 20% of the words."]
     if framework:
@@ -374,19 +416,47 @@ def mentor(digest: dict, current_scores: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------- assemble
+GRAMMAR_NAMES = {"tense": "past tense", "agreement": "subject–verb agreement", "verb form": "verb forms",
+                 "pronouns": "pronouns", "nouns": "plurals", "word choice": "word choice", "capitals": "capital letters"}
+
+
 def local_review(text: str, mode: str, spec: dict, m: dict, scores: dict, cues: dict,
-                 history: list[dict] | None = None) -> dict:
+                 history: list[dict] | None = None, prompt: str = "") -> dict:
     sents = split_sentences(text)
     labels = list(spec.get("framework") or [])
     bd = breakdown(sents, labels, cues)
     current = {"overall": round(sum(scores.values()) / len(scores)), **scores, "analysis": {"structure_map": bd["parts"], "metrics": m}}
     digest = history_digest((history or []) + [current])    # the mentor sees this take too
+    rw = rewrite.mentor_rewrite(text, mode, spec, cues, prompt)
+    off = rw["off_topic"]
+    co = coach(mode, sents, scores, bd["parts"], bd["order_note"], m, labels, off)
+    co["stronger_version"] = rw["script"]["full"] or None      # "say it like this", built from their own words
+    co["script"] = rw["script"]["parts"]
+    gram, n_gram = rw["corrected"]["grammar"], rw["corrected"]["grammar_count"]
+    if n_gram:                                        # the mentor's grammar point: the most frequent pattern
+        top = gram[0]
+        quote = next((x["original"] for x in rw["corrected"]["items"] if any("Grammar" in c for c in x["changes"])), None)
+        fix = {"quote": quote, "problem": f"{n_gram} grammar slip{'s' if n_gram > 1 else ''} — mostly "
+                                          f"{GRAMMAR_NAMES.get(top['kind'], top['kind'])}.",
+               "fix": top["lesson"] + (f" Like this: {top['examples'][0]}." if top["examples"] else "")}
+        at = (1 if off else 0) if n_gram >= 3 else len(co["fixes"])   # 3+ slips: grammar is the first fix
+        co["fixes"] = (co["fixes"][:at] + [fix] + co["fixes"][at:])[:3]
+        if n_gram >= 3 and not off:
+            co["do_next"] = ([fix["fix"]] + [d for d in co["do_next"] if d != fix["fix"]])[:3]
+    ev = evaluator(mode, sents, text, scores, bd["parts"], m)
+    if off:
+        ev["doubts"] = ([{"quote": None, "why": off["message"]}] + ev["doubts"])[:3]
+        ev["to_strong_yes"] = ([off["retry"]] + ev["to_strong_yes"])[:2]
+    fixed = rw["corrected"]
     return {
-        "evaluator": evaluator(mode, sents, text, scores, bd["parts"], m),
-        "corrections": corrections_mod.correct(text),
+        "evaluator": ev,
+        "corrections": {"items": fixed["items"][:6], "corrected_full": fixed["full"] or None,
+                        "split_from_run_on": fixed["split_from_run_on"], "grammar": fixed["grammar"],
+                        "grammar_count": fixed["grammar_count"], "source": "local"},
         "breakdown": bd,
-        "coach": coach(mode, sents, scores, bd["parts"], bd["order_note"], m, labels),
+        "coach": co,
         "mentor": mentor(digest, scores),
+        "off_topic": off,
         "source": "local",
     }
 
@@ -444,6 +514,7 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
                 r["coach"]["drill"] = {"title": str(dr["title"]), "steps": [str(s) for s in dr["steps"]][:4]}
             if isinstance(co.get("stronger_version"), str) and co["stronger_version"].strip():
                 r["coach"]["stronger_version"] = co["stronger_version"].strip()
+                r["coach"]["script"] = None            # the AI's version replaces the built-in, part-labelled one
         cr = data.get("corrections")
         if isinstance(cr, dict) and isinstance(cr.get("items"), list):
             items = []
@@ -454,7 +525,7 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
                                   "changes": [str(c).strip() for c in x.get("changes") or [] if str(c).strip()][:4],
                                   "notes": [str(c).strip() for c in x.get("notes") or [] if str(c).strip()][:2]})
             if items or cr.get("corrected_full"):
-                r["corrections"] = {"items": items, "source": "ai",
+                r["corrections"] = {"items": items, "source": "ai", "grammar": (local.get("corrections") or {}).get("grammar") or [],
                                     "corrected_full": (str(cr.get("corrected_full")).strip() or None)
                                     if cr.get("corrected_full") else None}
         me = data.get("mentor") or {}
@@ -465,8 +536,15 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
         r["source"] = "ai"
     if challenge:  # Challenge Mode never hands over an answer: show what's wrong, not the corrected words
         r["coach"]["stronger_version"] = None
+        r["coach"]["script"] = None
+        if r.get("off_topic"):
+            r["off_topic"] = {**r["off_topic"], "starter": None}
+        strip = lambda t: re.sub(r"\s*Like this: [^.]*\.", "", t) if isinstance(t, str) else t  # noqa: E731
+        r["coach"]["fixes"] = [{**f, "fix": strip(f.get("fix"))} for f in r["coach"].get("fixes") or []]
+        r["coach"]["do_next"] = [strip(d) for d in r["coach"].get("do_next") or []]
         cr = dict(r.get("corrections") or {})
         cr["items"] = [{**x, "corrected": None} for x in cr.get("items", [])]
         cr["corrected_full"] = None
+        cr["grammar"] = [{**g, "examples": []} for g in cr.get("grammar") or []]   # the lesson, not the answer
         r["corrections"] = cr
     return r

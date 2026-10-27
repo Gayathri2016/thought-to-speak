@@ -11,7 +11,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from . import pronunciation
+from . import metrics, pronunciation
 
 try:
     from wordfreq import zipf_frequency
@@ -92,7 +92,7 @@ def tokens(text: str) -> list[str]:
 def split_sentences(text: str, words: list[dict] | None = None) -> tuple[list[str], str]:
     """Return (sentences, method). Uses punctuation if present, else pauses between timestamped words."""
     t = (text or "").strip()
-    parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", t) if s.strip()]
+    parts = [s.strip() for s in metrics.SENT_SPLIT.split(t) if s.strip()]
     if len(parts) > 1 or (parts and re.search(r"[.!?]$", t) and len(tokens(t)) < 35):
         return parts, "punctuation"
     if words and len(words) > 3:
@@ -166,6 +166,7 @@ def vocabulary(text: str, daily: list[str] | None = None) -> dict:
 
 
 def grammar_issues(text: str) -> list[dict]:
+    text = re.sub(r"\b([AaPp])\.\s?[Mm]\.?", r"\1m", text or "")      # "9 a.m." is a time, not "a m"
     low = " ".join(tokens(text))
     issues = []
     for pattern, fix, why in GRAMMAR_RULES:
@@ -180,6 +181,13 @@ def grammar_issues(text: str) -> list[dict]:
                 issues.append({"original": f"a {b}", "suggestion": f"an {b}", "issue": "Use “an” before a vowel sound."})
             elif a == "an" and not vowel_start:
                 issues.append({"original": f"an {b}", "suggestion": f"a {b}", "issue": "Use “a” before a consonant sound."})
+    from . import grammar, rewrite                    # local import: rewrite → corrections → language
+    seen = {i["original"] for i in issues}
+    for words in rewrite._raw_sentences(text):
+        for c in grammar.fix(" ".join(words))[1]:
+            if c["from"] not in seen and c["kind"] != "capitals":
+                seen.add(c["from"])
+                issues.append({"original": c["from"], "suggestion": c["to"], "issue": c["rule"][:1].upper() + c["rule"][1:] + "."})
     return issues[:8]
 
 

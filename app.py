@@ -47,7 +47,11 @@ async def lifespan(_app: FastAPI):
     runner.stop()
 
 
-app = FastAPI(title="Thought → Speak", version="8.5", lifespan=lifespan)
+# API docs (/docs, /redoc, /openapi.json) are on for local development; API_DOCS=0 hides them on a public server.
+_docs = os.getenv("API_DOCS", "1").strip().lower() not in ("0", "false", "no", "off")
+app = FastAPI(title="Thought → Speak", version="9.0-beta", lifespan=lifespan,
+              docs_url="/docs" if _docs else None, redoc_url="/redoc" if _docs else None,
+              openapi_url="/openapi.json" if _docs else None)
 app.state.ctx = Context(store=store, curriculum=curriculum, service=service, runner=runner,
                         base_dir=BASE_DIR, audio_dir=AUDIO_DIR, tmp_dir=TMP_DIR)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -65,6 +69,34 @@ async def revalidate_app_files(request: Request, call_next):
     return response
 
 
+# Security headers on every response. The CSP allows what the app actually uses: its own scripts plus the
+# blob: audio worklet that captures the microphone, inline style attributes, and same-origin API/audio.
+CSP = ("default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; "
+       "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; "
+       "base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+SECURITY_HEADERS = os.getenv("SECURITY_HEADERS", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if SECURITY_HEADERS:
+        h = response.headers
+        h.setdefault("Content-Security-Policy", CSP)
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        h.setdefault("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
+        h.setdefault("X-Frame-Options", "DENY")
+        if request.url.scheme == "https":
+            h.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return response
+
+
 @app.get("/")
 def home():
     return FileResponse(BASE_DIR / "static" / "index.html")
+
+
+@app.get("/privacy")
+def privacy():
+    return FileResponse(BASE_DIR / "static" / "privacy.html")

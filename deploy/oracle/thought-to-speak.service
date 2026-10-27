@@ -1,0 +1,29 @@
+# systemd unit — installed by setup.sh to /etc/systemd/system/thought-to-speak.service
+[Unit]
+Description=Thought to Speak (free beta)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tts
+Group=tts
+WorkingDirectory=/opt/thought-to-speak/app
+EnvironmentFile=/etc/thought-to-speak/env
+# One process only: the analysis worker pool lives inside it. --proxy-headers makes the app see each visitor's
+# real IP and the https scheme from Caddy (rate limits and secure cookies depend on it); only localhost is trusted.
+ExecStart=/opt/thought-to-speak/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1 \
+  --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=always
+RestartSec=3
+# Hardening: the app can write only to its data folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/thought-to-speak
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

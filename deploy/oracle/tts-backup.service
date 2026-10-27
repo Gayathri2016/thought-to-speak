@@ -1,0 +1,9 @@
+[Unit]
+Description=Thought to Speak nightly backup
+
+[Service]
+Type=oneshot
+User=tts
+Group=tts
+EnvironmentFile=/etc/thought-to-speak/env
+ExecStart=/bin/bash /opt/thought-to-speak/app/deploy/oracle/backup.sh

@@ -2,13 +2,13 @@
 import { $, DIMS, esc, fmtTime, state } from "./core.js";
 import { api } from "./api.js";
 import { practiceWith, startRetry } from "./recording.js";
+import { scoreHeadline } from "./habit.js";
 
 export function renderAnalysis(a) {
   $("emptyState").classList.add("hidden"); $("results").classList.remove("hidden");
   $("warning").textContent = a.warning || ""; $("warning").classList.toggle("hidden", !a.warning);
-  $("overall").textContent = a.overall_score;
-  const C = 2 * Math.PI * 52, fg = $("ringFg");
-  fg.style.strokeDasharray = C; fg.style.strokeDashoffset = C * (1 - a.overall_score / 100);
+  revealScore(a.overall_score);
+  $("scoreHeadline").textContent = scoreHeadline(a.overall_score);
   $("ring").setAttribute("aria-label", `Overall score ${a.overall_score} out of 100`);
 
   const ra = a.kind === "read_aloud";
@@ -36,12 +36,31 @@ export function renderAnalysis(a) {
     [m.word_count, "words", "measured"],
     [fmtTime(m.seconds), est ? "est. time" : "spoken", est ? "estimated" : "measured"],
     [m.wpm || "—", "words / min", est ? "estimated" : "measured"],
-    [m.filler_rate, "fillers / 100w", "measured"],
+    [m.filler_rate, "transcript fillers / 100w", "measured"],
     [m.hedge_count, "hedges", "measured"],
   ].map(([v, l, k]) => `<div class="metric ${k}" title="${k === "estimated" ? "Estimated from word count (no recording timing)" : "Counted from your transcript or measured from your recording"}">
     <b>${esc(v)}${k === "estimated" ? "<sup>est</sup>" : ""}</b><span>${esc(l)}</span></div>`).join("");
   $("provenanceLine").innerHTML = provenanceLine(pv);
   finishAnalysis(a);
+}
+
+/* The one celebratory motion in the app: the ring draws and the number counts up as the result arrives. */
+function revealScore(score) {
+  const C = 2 * Math.PI * 52, fg = $("ringFg"), out = $("overall");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  fg.style.strokeDasharray = C;
+  $("ring").dataset.band = score >= 70 ? "high" : score >= 55 ? "mid" : "low";
+  if (calm) { fg.style.strokeDashoffset = C * (1 - score / 100); out.textContent = score; return; }
+  fg.style.transition = "none"; fg.style.strokeDashoffset = C; out.textContent = "0";
+  void fg.getBoundingClientRect();                        // restart the draw from empty
+  fg.style.transition = ""; fg.style.strokeDashoffset = C * (1 - score / 100);
+  const t0 = performance.now(), dur = 800;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), eased = 1 - Math.pow(1 - k, 3);
+    out.textContent = Math.round(score * eased);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 /* ------------------------------------------------------------------ focused results (v8.3) */
@@ -64,11 +83,59 @@ export function renderFocus(a) {
       <span class="eyebrow">Fix first</span><p><b>${esc(f.priority.text)}</b></p>${evidenceHtml(f.priority)}</div></div>
     <div class="fc-row retry"><span class="fc-ico" aria-hidden="true">↻</span><div>
       <span class="eyebrow">On your retry</span><p>${esc(f.retry)}</p>
-      <button class="primary sm" id="fcRetry">🔁 Retry now</button></div></div>`;
+      ${starterHtml(a)}
+      <button class="primary sm" id="fcRetry">🔁 Retry now</button></div></div>
+    ${sayItHtml(a, "fc")}`;
   $("fcRetry").onclick = () => { startRetry(); $("status").textContent = `Focus: ${f.retry}`; };
+  wireSayIt(a, "fc");
   // the retry instruction replaces the generic "next challenge" text; the buttons below stay
   $("nextChallenge").classList.add("hidden"); $("nextLabel").textContent = "Keep going";
 }
+/* ------------------------------------------------------------------ the mentor: "say it like this" */
+function starterHtml(a) {
+  const st = a.review?.off_topic?.starter;
+  return st && !a.challenge_mode ? `<p class="fc-starter"><span>To answer the prompt, start like this:</span> “${esc(st)}”</p>` : "";
+}
+export function sayItHtml(a, id) {
+  const co = a.review?.coach || {};
+  if (a.challenge_mode || !co.stronger_version) return "";
+  const parts = co.script || null;
+  const body = parts ? `<ol class="say-parts">${parts.map((p) => `<li class="${p.yours ? "yours" : p.fill_in ? "fill" : "added"}">
+      <span class="say-label">${esc(p.label)}<em>${p.yours ? "your words" : p.fill_in ? "add this" : "added"}</em></span>
+      <span class="say-text">${esc(p.text)}</span></li>`).join("")}</ol>`
+    : `<p class="say-text">${esc(co.stronger_version)}</p>`;
+  return `<div class="fc-row say" id="${id}Say"><span class="fc-ico" aria-hidden="true">💬</span><div>
+    <span class="eyebrow">Say it like this</span>
+    <p class="small muted say-intro">${parts ? `Your answer, corrected and put in the ${esc(a.framework_name || "scenario")} order. Lines marked “added” are suggestions — say them your way.` : "Same facts, better shape."}</p>
+    ${body}
+    ${id === "fc" ? grammarLine(a.review?.corrections) : ""}
+    <div class="row gap-s wrap-row"><button class="ghost sm" id="${id}Hear">▶ Listen</button>
+      ${id === "fc" ? `<button class="link-btn sm" id="fcLines">See each fix, line by line</button>` : ""}</div></div></div>`;
+}
+const KIND_LABEL = { tense: "past tense", agreement: "subject–verb agreement", "verb form": "verb forms",
+  pronouns: "pronouns", nouns: "plurals", "word choice": "word choice", capitals: "capital letters" };
+function grammarLine(c) {
+  const g = c?.grammar || [], n = c?.grammar_count || 0;
+  if (!n || !g.length) return "";
+  return `<p class="say-grammar"><b>📐 ${n} grammar fix${n > 1 ? "es" : ""}</b> — mostly ${esc(KIND_LABEL[g[0].kind] || g[0].kind)}. ${esc(g[0].lesson)}</p>`;
+}
+export function grammarHtml(c, challenge) {
+  const g = c?.grammar || [];
+  if (!g.length) return "";
+  return `<div class="gram"><div class="eyebrow">📐 Grammar to practise</div><ul class="gram-list">${g.map((p) => `<li>
+      <b>${esc((KIND_LABEL[p.kind] || p.kind).replace(/^./, (x) => x.toUpperCase()))}</b>${p.count > 1 ? ` <span class="muted small">×${p.count}</span>` : ""}
+      <span>${esc(p.lesson)}</span>
+      ${!challenge && p.examples?.length ? `<span class="gram-ex">${p.examples.map((e) => `<code>${esc(e)}</code>`).join(" ")}</span>` : ""}</li>`).join("")}</ul></div>`;
+}
+export function wireSayIt(a, id) {
+  const co = a.review?.coach || {};
+  if ($(`${id}Hear`)) $(`${id}Hear`).onclick = () => speak(co.stronger_version, 0.95);
+  if ($("fcLines") && id === "fc") $("fcLines").onclick = () => {
+    const d = $("moreReview"); d.open = true;
+    (document.getElementById("rvLines") || d).scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+}
+
 // ▶ timestamp chips anywhere in the results jump the recording to that moment
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".ts[data-t]");
@@ -92,7 +159,7 @@ document.querySelectorAll("details.more").forEach((d) => {
 export function provBadge(src, dim) {
   if (src === "ai") return `<span class="pb ai" title="Judged by the AI coach">AI</span>`;
   if (dim === "delivery") return `<span class="pb est" title="Built-in formula over measured signals: fillers, hedges, pace, pauses and pitch">formula</span>`;
-  return `<span class="pb est" title="Built-in heuristic estimate — add an API key for AI judgement">est.</span>`;
+  return `<span class="pb est" title="Estimated by the built-in coach">est.</span>`;
 }
 export function provenanceLine(pv) {
   if (!pv.scoring_version) return "";
@@ -106,7 +173,8 @@ export function finishAnalysis(a) {
   const f = Object.entries(a.metrics.fillers || {});
   $("fillerChips").innerHTML = f.length
     ? f.map(([k, v]) => `<span class="chip">“${esc(k)}” ×${v}</span>`).join("")
-    : `<span class="chip">No fillers detected 👏</span>`;
+    : `<span class="chip">No fillers found in the transcript</span>`;
+  $("fillerNote").textContent = a.metrics.filler_note || "Counts describe the transcript. Speech recognition may omit fillers.";
 
   const li = (xs) => (xs || []).map((x) => `<li>${esc(x)}</li>`).join("");
   $("strengths").innerHTML = li(a.strengths);
@@ -141,6 +209,9 @@ export function renderReview(a) {
   const outline = a.suggested_outline || [];
   el.classList.remove("hidden");
   el.innerHTML = `
+    ${a.challenge_mode ? "" : `<section class="rv-sec rv-say"><div class="rv-h"><span class="rv-who">💬 Say it like this</span>
+      <span class="small muted">your answer, rewritten from your own words</span></div>${sayItHtml(a, "rv")}</section>`}
+
     <section class="rv-sec rv-eval v-${esc(ev.verdict)}">
       <div class="rv-h"><span class="rv-who">🎯 ${esc(ev.role)}</span>
         <span class="rv-badge">${esc(ev.verdict_label)}</span></div>
@@ -175,13 +246,8 @@ export function renderReview(a) {
       <div class="rv-actions"><button class="primary sm" id="rvRetry">🔁 Retry with these fixes</button></div>
       ${co.drill ? `<details class="rv-drill"><summary>🎯 2-minute drill: <b>${esc(co.drill.title)}</b></summary>
         <ol class="small">${co.drill.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></details>` : ""}
-      ${co.stronger_version ? `<details class="rv-drill"><summary>✨ Hear a stronger version of <i>your</i> answer</summary>
-        <p class="rv-strong">${esc(co.stronger_version)}</p>
-        <button class="ghost sm" id="rvHear">▶ Listen</button>
-        <p class="small muted">Same facts, better shape. Don't memorise it — notice what changed, then say it your way.</p></details>`
-        : !a.challenge_mode && outline.length ? `<details class="rv-drill"><summary>🦴 Skeleton built from your own words</summary>
-        <ul class="small">${outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-        <p class="small muted">Add an API key for a full rewritten version of your answer.</p></details>` : ""}
+      ${!a.challenge_mode && !co.stronger_version && outline.length ? `<details class="rv-drill"><summary>🦴 Skeleton built from your own words</summary>
+        <ul class="small">${outline.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}
     </section>
 
     <section class="rv-sec rv-mentor">
@@ -191,28 +257,30 @@ export function renderReview(a) {
       <p><b>This week's habit:</b> ${esc(me.habit)}</p>
       ${me.note ? `<p class="small muted">${esc(me.note)}</p>` : ""}
     </section>
-    <p class="small muted rv-src">${r.source === "ai" ? "Review written by your AI coach." : "Review from the built-in coach — add an API key for deeper, AI-written feedback."}
+    <p class="small muted rv-src">${r.source === "ai" ? "Review written by your AI coach." : "Review from the built-in coach."}
       Every quote was checked against your transcript${r.evidence?.dropped ? ` (${r.evidence.dropped} unverifiable quote${r.evidence.dropped > 1 ? "s" : ""} removed)` : ""}${r.evidence?.timestamps ? "; ▶ times come from Whisper's word timings" : ""}.</p>`;
   $("rvFollow").onclick = () => {
     state.chainId = null; state.takeNo = 1;
     practiceWith({ mode: a.mode in state.modes ? a.mode : state.mode, prompt: ev.follow_up });
-    $("transcript").value = ""; $("status").textContent = "Follow-up question loaded — hit “Start speaking”.";
+    $("transcript").value = ""; $("status").textContent = "Follow-up question loaded — tap the mic to answer.";
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   $("rvRetry").onclick = () => {
     startRetry();
     if (co.do_next?.length) $("status").textContent = `Focus: ${co.do_next[0]}`;
   };
-  if ($("rvHear")) $("rvHear").onclick = () => speak(co.stronger_version, 0.95);
+  wireSayIt(a, "rv");
   if ($("rvHearFixed")) $("rvHearFixed").onclick = () => speak(r.corrections.corrected_full, 0.95);
 }
 
 export function renderCorrections(c, challenge) {
   const items = c?.items || [];
-  if (!items.length) return `<section class="rv-sec rv-fix"><div class="rv-h"><span class="rv-who">✍️ Corrections</span></div>
-    <p class="small muted">No corrections needed — your sentences came through clean.</p></section>`;
-  return `<section class="rv-sec rv-fix">
-    <div class="rv-h"><span class="rv-who">✍️ Corrections</span><span class="small muted">${challenge ? "find the fix yourself" : "what you said → how to say it"}</span></div>
+  if (!items.length) return `<section class="rv-sec rv-fix" id="rvLines"><div class="rv-h"><span class="rv-who">✍️ Line by line</span></div>
+    ${grammarHtml(c, challenge)}<p class="small muted">No corrections needed — your sentences came through clean.</p></section>`;
+  return `<section class="rv-sec rv-fix" id="rvLines">
+    <div class="rv-h"><span class="rv-who">✍️ Line by line</span><span class="small muted">${challenge ? "find the fix yourself" : "what you said → how to say it → why"}</span></div>
+    ${grammarHtml(c, challenge)}
+    ${c.split_from_run_on ? `<p class="small rv-note">Your answer came through as one long sentence. Here it is as ${c.split_from_run_on} sentences — one idea each.</p>` : ""}
     <ol class="rv-corr">${items.map((x) => `<li>
       <div class="rv-said"><span class="eyebrow">You said</span><span><q>${esc(x.original)}</q>${x.start != null ? ` <button class="ts" data-t="${x.start}">▶ ${fmtTs(x.start)}</button>` : ""}</span></div>
       ${x.corrected ? `<div class="rv-better"><span class="eyebrow">Say</span><span>${esc(x.corrected)}</span></div>` : ""}
@@ -221,6 +289,7 @@ export function renderCorrections(c, challenge) {
     ${c.corrected_full ? `<details class="rv-drill"><summary>📝 Your whole answer, corrected</summary>
       <p class="rv-strong">${esc(c.corrected_full)}</p><button class="ghost sm" id="rvHearFixed">▶ Listen</button>
       <p class="small muted">Same words and meaning — just fixed. Read it aloud once, then answer again from memory.</p></details>` : ""}
+    <p class="small muted">If a line has words you didn't say, the browser misheard you — fix them in “What you said” and get feedback again.</p>
   </section>`;
 }
 

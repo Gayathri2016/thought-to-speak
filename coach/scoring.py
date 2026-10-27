@@ -19,7 +19,7 @@ counts, fillers, pace, pauses) are comparable when the transcript class matches.
 import hashlib
 import json
 
-HEURISTIC_VERSION = "h8"        # built-in content scoring + delivery formula (v8 review era)
+HEURISTIC_VERSION = "h10"       # h9: everyday scenarios, hesitations · h10: off-topic cap, a.m./p.m. sentences
 AI_PROMPT_VERSION = "p8"        # SYSTEM_PROMPT schema/rubric for AI scoring
 PRONUNCIATION_VERSION = "r1"    # read-aloud word alignment
 LEGACY = "legacy"               # takes saved before provenance was recorded

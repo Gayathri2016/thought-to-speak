@@ -51,7 +51,13 @@ def client(anon):
 def test_config_and_prompt(client):
     cfg = client.get("/api/config").json()
     assert cfg["provider"] == "local"
-    assert len(cfg["modes"]) == 5
+    assert {m["name"] for m in cfg["modes"]} >= {
+        "Everyday Conversation", "Tell a Story", "Share an Opinion", "Difficult Conversations",
+        "Interview", "Leadership", "Technical Explanation", "Toastmasters", "FDE / Customer",
+    }
+    selectable = {m["name"] for m in cfg["modes"] if m["selectable"]}
+    assert "FDE / Customer" not in selectable
+    assert {"Everyday Conversation", "Interview", "Toastmasters"} <= selectable
     p = client.get("/api/prompt", params={"mode": "Toastmasters"}).json()
     assert p["mode"] == "Toastmasters" and p["prompt"]
 
@@ -584,7 +590,12 @@ def test_local_review_evaluator_coach_and_breakdown():
     quotes = [f["quote"] for f in weak["coach"]["fixes"] if f["quote"]]
     assert len(quotes) == len(set(quotes))                              # never the same sentence twice
     assert weak["coach"]["do_next"] and weak["coach"]["drill"]["steps"]
-    assert weak["coach"]["stronger_version"] is None and weak["source"] == "local"
+    assert weak["source"] == "local"
+    # the built-in mentor rewrites the answer from the speaker's own words, labelling any added lines
+    sv, script = weak["coach"]["stronger_version"], weak["coach"]["script"]
+    assert sv and "um" not in sv.lower().split() and "basically" not in sv.lower()
+    assert [p["label"] for p in script] == ["Situation", "Task", "Action", "Result", "Lesson"]
+    assert any(p["yours"] for p in script) and all(p["yours"] or p["text"].startswith("[") for p in script)
 
 
 def test_evaluator_role_follows_the_mode():
@@ -1705,8 +1716,8 @@ def test_frontend_idempotency_key_rules():
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    test_file = Path(__file__).parent / "js" / "takes.test.mjs"
-    r = subprocess.run([node, "--test", str(test_file)], capture_output=True, text=True, timeout=60)
+    test_files = sorted((Path(__file__).parent / "js").glob("*.test.mjs"))
+    r = subprocess.run([node, "--test", *map(str, test_files)], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     assert "# fail 0" in r.stdout
 
@@ -1715,7 +1726,7 @@ def test_recording_uses_the_take_controller():
     """The Analyze button goes through takes.js — no hand-rolled key handling left in recording.js."""
     from pathlib import Path
     src = (Path(__file__).parent.parent / "static" / "js" / "recording.js").read_text()
-    assert "takes.run(" in src and "takes.resume(" in src and "if (takes.busy) return;" in src
+    assert "takes.run(" in src and "takes.resume(" in src and "if (takes.busy || state.analyzing) return;" in src
     assert "idemKey" not in src
 
 
@@ -1936,3 +1947,336 @@ def test_delete_waits_for_an_in_flight_skill_update(tmp_path, monkeypatch):
     skills = us.meta_get("skills")
     assert skills["_applied"] == [keep["id"]] and set(_skill_reviews(us).values()) == {1}
     assert skills["structure"]["last_score"] == 90                          # the deleted 40 left no trace
+
+
+# Everyday practice and transcript fidelity.
+@pytest.mark.parametrize('text,expected', [
+    ('Ummm, uhm, um, uhhhh, ermmm, ahhh, hmmmm.',
+     {'um': 3, 'uh': 1, 'er': 1, 'ah': 1, 'hmm': 1}),
+    ('I would like tea. I like walking. It looks like rain. Summer is here.', {}),
+])
+def test_prolonged_hesitations_are_counted_without_matching_normal_words(text, expected):
+    from coach.metrics import filler_breakdown
+    assert filler_breakdown(text) == expected
+
+
+@pytest.mark.parametrize('mode,text', [
+    ('Everyday Conversation', "Hi, I'm Sam. I enjoy walking in the park because it helps me relax after a busy day. "
+     "Yesterday I went with a friend and we stopped for tea. How about you, what do you enjoy doing in your free time?"),
+    ('Tell a Story', "Last year, when I was learning to cook, I forgot to set a timer. I decided to start again "
+     "and write down the steps. As a result, we ended up enjoying dinner together. I learned to prepare before I start."),
+    ('Share an Opinion', "I prefer spending a free day outdoors because a change of scenery helps me relax. "
+     "For example, when I go for a walk with a friend, we have time to talk without distractions. "
+     "That's why I think a little time outside makes a difference."),
+    ('Difficult Conversations', "I understand you have a busy schedule and I appreciate you making time for me. "
+     "I think we should agree on a meeting time because waiting outside is frustrating. "
+     "As a next step, could we try sending a message if either of us is running late?"),
+])
+def test_everyday_scenarios_have_appropriate_coaching(client, mode, text):
+    from coach.prompts import MODES
+    cfg = client.get('/api/config').json()
+    public = next(m for m in cfg['modes'] if m['name'] == mode)
+    assert public['group'] == 'Everyday life'
+    prompt = client.get('/api/prompt', params={'mode': mode}).json()
+    assert prompt['prompt'] in MODES[mode]['prompts']
+    r = client.post('/api/analyze', json={'mode': mode, 'prompt': prompt['prompt'], 'transcript': text}).json()
+    a = r['analysis']
+    assert a['mode'] == mode
+    assert a['review']['evaluator']['role'] != 'Interviewer'
+    assert a['scores']['answer_quality'] >= 60
+    assert a['focus']['retry']
+    assert 'Quantify at least one outcome' not in a['improvements']
+    assert a['metrics']['filler_note'].startswith('Counted from the transcript')
+
+
+def test_everyday_practice_is_default_and_professional_modes_still_work(client):
+    from coach.prompts import DEFAULT_MODE, normalize_mode
+    assert DEFAULT_MODE == 'Everyday Conversation'
+    assert normalize_mode(None) == DEFAULT_MODE
+    assert normalize_mode('technical') == 'Technical Explanation'
+    assert client.get('/api/recommendation').json()['mode'] == DEFAULT_MODE
+    assert client.get('/api/prompt', params={'mode': DEFAULT_MODE}).json()['mode'] == DEFAULT_MODE
+
+
+def test_audio_transcript_without_word_timings_keeps_the_live_draft(client, monkeypatch):
+    from coach import transcribe
+    recognized = 'Um, I enjoy walking because it helps me relax. How about you?'
+    draft = 'I enjoy walking because it helps me relax how about you'
+    monkeypatch.setattr(transcribe, 'transcribe', lambda p: {
+        'text': recognized, 'words': [], 'source': 'test:whisper',
+    })
+    wav = _speechlike_wav([('q', .3), ('s', 5), ('q', .3)])
+    response = client.post('/api/analyze-audio', files={'audio': ('take.wav', wav, 'audio/wav')},
+        data={'payload': json.dumps({'mode': 'Everyday Conversation', 'transcript': draft})})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data['attempt']['transcript'] == recognized
+    assert data['analysis']['voice']['browser_transcript'] == draft
+    assert data['analysis']['metrics']['fillers']['um'] == 1
+    assert data['analysis']['review']['evidence']['timestamps'] is False
+
+
+def test_everyday_coaching_does_not_treat_think_as_a_greeting_or_require_numbers():
+    from coach import analysis
+    opening = analysis.framework_map('I think this needs more thought.', ['Opening'])[0]
+    assert opening['status'] == 'missing'
+    story = analysis.analyze('When I was learning to cook, I needed help. I decided to ask a friend. '
+                             'I learned to ask for help instead of giving up.', 'Tell a Story')
+    result_fixes = [f for f in story['review']['coach']['fixes'] if 'Result' in f['problem']]
+    assert result_fixes and 'number' not in result_fixes[0]['fix']
+
+
+# ----------------------------------------------------------------------------- mentor rewrite (built-in)
+DAY_TAKE = ("I woke up at 9:00 a.m. and came downstairs have some car had some coffee my brother got up he woke up "
+            "around 9:30 he had some breakfast I took him to the piano lessons and we came back we got ready I packed "
+            "his bag we went to the library there was a book sale going on at the library we stayed there for more than "
+            "an hour and then we had lunch and they came back after I came back I sat with my brother for his math "
+            "homework and you know science project then yeah well I did my other things after that this is all my day "
+            "you know today")   # a made-up spoken run-on: false start, fillers, sign-off, no punctuation
+RECOMMEND = "Recommend a meal, book, film, or place you enjoyed. Explain why and ask what they recommend."
+
+
+def test_mentor_rewrite_turns_a_spoken_run_on_into_clean_sentences():
+    from coach import analysis, rewrite
+    r = rewrite.mentor_rewrite(DAY_TAKE, "Everyday Conversation", analysis.mode_spec("Everyday Conversation"),
+                               analysis.FRAMEWORK_CUES, RECOMMEND)
+    sents = r["corrected"]["sentences"]
+    assert sents[0] == "I woke up at 9:00 a.m., came downstairs and had some coffee."   # false start repaired
+    assert "He woke up around 9:30 and had some breakfast." in sents                   # short sentences joined
+    assert "We came back and got ready." in sents
+    full = r["corrected"]["full"].lower()
+    assert "you know" not in full and "yeah" not in full and "this is all" not in full  # fillers + sign-off gone
+    for item in r["corrected"]["items"]:                    # every "you said" is the speaker's exact words
+        assert " ".join(item["original"].split()) in DAY_TAKE and item["changes"]
+    parts = r["script"]["parts"]
+    assert [p["label"] for p in parts] == ["Opening", "Detail", "Question"]
+    assert not parts[0]["yours"] and parts[1]["yours"] and not parts[2]["yours"]       # added lines are labelled
+    assert "piano lessons" in parts[0]["text"] and parts[2]["text"].endswith("?")
+
+
+def test_off_topic_answer_becomes_the_first_thing_to_fix():
+    from coach import analysis
+    a = analysis.analyze(DAY_TAKE, "Everyday Conversation", RECOMMEND, duration_seconds=65)
+    f = a["focus"]
+    assert "recommend" in f["priority"]["text"] and "described your day" in f["priority"]["text"]
+    assert a["scores"]["relevance"] <= 40
+    assert f["strength"]["quote"] != f["priority"]["quote"] or f["strength"]["quote"] is None
+    assert a["review"]["coach"]["fixes"][0]["problem"].startswith("You described your day")
+    assert "fillers in one sentence" not in json.dumps(a["review"]["coach"]["fixes"])      # 2 in 117 words isn't it
+    assert a["review"]["coach"]["stronger_version"]
+    assert "warm-up" not in json.dumps(a["review"]["evaluator"])                          # missing opening ≠ warm-up
+    assert "?" in a["review"]["evaluator"]["follow_up"] and "help the other person" not in a["review"]["evaluator"]["follow_up"]
+
+
+def test_a_real_recommendation_is_not_flagged_and_keeps_its_own_question():
+    from coach import analysis, rewrite
+    t = ("hi so I have to tell you about this ramen place downtown it's called Menya I went there last Friday with my "
+         "sister the broth is really rich and they make the noodles by hand you should totally try it what's your "
+         "favorite place to eat")
+    assert rewrite.intent_check(RECOMMEND, t) is None
+    parts = rewrite.mentor_rewrite(t, "Everyday Conversation", analysis.mode_spec("Everyday Conversation"),
+                                   analysis.FRAMEWORK_CUES, RECOMMEND)["script"]["parts"]
+    assert all(p["yours"] for p in parts)
+    assert parts[0]["text"] == "Hi, I have to tell you about this ramen place downtown."
+    assert parts[2]["text"] == "What's your favorite place to eat?"
+
+
+def test_opinion_rewrite_separates_point_reason_and_example():
+    from coach import analysis, rewrite
+    t = ("I think remote work is better because people save two hours of commuting and for example my team shipped "
+         "faster last year so that's why I think remote work is better")
+    parts = rewrite.mentor_rewrite(t, "Share an Opinion", analysis.mode_spec("Share an Opinion"),
+                                   analysis.FRAMEWORK_CUES, "Is it better to work from home or in an office?")["script"]["parts"]
+    assert [(p["label"], p["text"]) for p in parts] == [
+        ("Point", "I think remote work is better."), ("Reason", "That's because people save two hours of commuting."),
+        ("Example", "For example, my team shipped faster last year."), ("Point again", "That's why I think remote work is better.")]
+
+
+def test_prompt_follow_up_questions_are_turned_around():
+    from coach.rewrite import prompt_question
+    assert prompt_question(RECOMMEND) == "What would you recommend?"
+    assert prompt_question("A neighbor asks how your weekend was. Share one highlight and ask about their weekend.") == "How was your weekend?"
+    assert prompt_question("Tell a friend about a hobby you enjoy and ask what they like doing in their free time.") == \
+        "What do you like doing in your free time?"
+    assert prompt_question("Describe your morning.") is None
+
+
+def test_am_pm_is_neither_a_sentence_end_nor_a_grammar_error():
+    from coach import language, metrics
+    t = "I woke up at 9:00 a.m. and came downstairs and we left at 5 p.m. for dinner"
+    assert len(metrics.sentences(t)) == 1 and not metrics.compute(t)["punctuated"]
+    assert not [g for g in language.grammar_issues(t) if g["original"].startswith("a m")]
+
+
+def test_challenge_mode_gets_no_rewritten_answer():
+    from coach import analysis
+    a = analysis.analyze(DAY_TAKE, "Everyday Conversation", RECOMMEND, challenge=True, duration_seconds=65)
+    co, cr = a["review"]["coach"], a["review"]["corrections"]
+    assert co["stronger_version"] is None and co["script"] is None
+    assert cr["corrected_full"] is None and all(x["corrected"] is None for x in cr["items"])
+    assert "One thing I really enjoyed" not in json.dumps(a["review"])                    # example wording redacted
+    assert "recommend" in a["focus"]["priority"]["text"]                                   # the diagnosis still shows
+
+
+# ----------------------------------------------------------------------------- mentor grammar
+GRAMMAR_CASES = [
+    ("Yesterday me and my son go to the park and play football.",
+     "Yesterday my son and I went to the park and played football."),
+    ("My son he like swimming very much.", "My son likes swimming very much."),
+    ("She have two kid and she work in a hospital.", "She has two kids and she works in a hospital."),
+    ("I am agree with you because I have went there two time.", "I agree with you because I have gone there two times."),
+    ("Last weekend we visit my aunt and eat dinner at her house.", "Last weekend we visited my aunt and ate dinner at her house."),
+    ("He can goes there on monday.", "He can go there on Monday."),
+    ("Can you explain me how it works?", "Can you explain to me how it works?"),
+    ("I enjoy to cook with my family.", "I enjoy cooking with my family."),
+    ("People is very friendly here.", "People are very friendly here."),
+    ("I want go to home now.", "I want to go home now."),
+    ("I woke up at seven and go to the gym.", "I woke up at seven and went to the gym."),
+    ("We discussed about the plan and he say me it is more easy.", "We discussed the plan and he told me it is easier."),
+    ("I have seen him last week.", "I saw him last week."),
+    ("Everybody are happy with the result.", "Everybody is happy with the result."),
+    ("She don't have many informations.", "She don't have much information."),   # "don't" is fixed by the next pass
+    ("They is very funny and people saves time.", "They are very funny and people save time."),
+]
+
+
+@pytest.mark.parametrize("said,better", GRAMMAR_CASES)
+def test_mentor_grammar_corrects_common_mistakes_with_a_rule(said, better):
+    from coach import grammar
+    out, changes = grammar.fix(said)
+    assert out == better
+    assert changes and all(c["rule"] and c["kind"] for c in changes)       # every fix explains itself
+
+
+def test_mentor_grammar_leaves_correct_english_alone():
+    from coach import rewrite
+    good = ["I usually go to the gym before work.", "They play football every Sunday.",
+            "Yesterday I went to the market and bought some fruit.", "She works at a hospital and has two kids.",
+            "I have lived here for five years.", "Let me know if you need anything.",
+            "My team and I shipped the feature in two weeks.", "I decided to run a two week proof of concept.",
+            "Last year I started running and now I run every morning.", "If I were you, I would book early.",
+            "My mom and dad visit us every summer.", "Everyone was happy with the result.", "I agree with you.",
+            "You should totally try it.", "When I was a kid we lived near the beach."]
+    for g in good:
+        assert rewrite.corrected(g, "Everyday Conversation")["grammar_count"] == 0, g
+
+
+def test_story_tense_carries_across_sentences_but_stops_at_now():
+    from coach import rewrite
+    out = rewrite.corrected("yesterday we go to the beach he really like it and we eat ice cream after that my son he "
+                            "say me it was the best day", "Everyday Conversation")
+    assert out["sentences"] == ["Yesterday, we went to the beach.", "He really liked it.", "We ate ice cream after that.",
+                                "My son told me it was the best day."]
+    kinds = [g["kind"] for g in out["grammar"]]
+    assert kinds[0] == "tense" and "pronouns" in kinds                      # most frequent pattern first
+    assert out["grammar"][0]["lesson"] and out["grammar"][0]["examples"][0] == "go → went"
+    calm = rewrite.corrected("Three years ago, I counted forty. I remember the first morning. So next time you reach "
+                             "for your phone, remember: the first hour is yours.", "Toastmasters")
+    assert calm["grammar_count"] == 0                                        # "remember", "next time" aren't past
+
+
+def test_grammar_lessons_show_in_the_review_and_challenge_hides_the_answers(client):
+    t = "Last weekend we visit my aunt and she cook biryani and we watch a movie together"
+    r = client.post("/api/analyze", json={"transcript": t, "mode": "Everyday Conversation"}).json()["analysis"]["review"]
+    g = r["corrections"]["grammar"]
+    assert g[0]["kind"] == "tense" and "visit → visited" in g[0]["examples"] and g[0]["lesson"]
+    assert "We visited my aunt" in r["coach"]["stronger_version"] or "we visited my aunt" in r["coach"]["stronger_version"]
+    ch = client.post("/api/analyze", json={"transcript": t, "mode": "Everyday Conversation",
+                                           "challenge_mode": True}).json()["analysis"]["review"]["corrections"]
+    assert ch["grammar"] and all(p["examples"] == [] and p["lesson"] for p in ch["grammar"])
+
+
+def test_many_grammar_slips_become_the_first_fix_without_giving_answers_in_challenge():
+    from coach import analysis
+    t = ("yesterday me and my son go to the park and play football he really like it and we eat ice cream after that "
+         "my son he say me it was the best day")
+    p = "A neighbor asks how your weekend was. Share one highlight and ask about their weekend."
+    a = analysis.analyze(t, "Everyday Conversation", p, False, 30)
+    assert "grammar slips" in a["focus"]["priority"]["text"] and "past tense" in a["focus"]["priority"]["text"]
+    assert "go → went" in a["focus"]["retry"]
+    c = analysis.analyze(t, "Everyday Conversation", p, True, 30)
+    assert "grammar slips" in c["focus"]["priority"]["text"] and "→" not in c["focus"]["retry"]
+    assert "→" not in json.dumps(c["review"]["coach"])
+
+
+# ----------------------------------------------------------------------------- public beta
+def test_beta_settings_badge_feedback_and_signup_cap(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch).app)
+    assert c.get("/api/config").json()["beta"]["on"] is False                 # off unless the server says so
+    c = TestClient(_fresh_app(tmp_path / "b", monkeypatch, BETA="1", BETA_MAX_USERS="2",
+                              FEEDBACK_URL="https://example.com/feedback", CONTACT_EMAIL="hi@example.com").app)
+    beta = c.get("/api/config").json()["beta"]
+    assert beta == {"on": True, "feedback_url": "https://example.com/feedback", "contact": "hi@example.com"}
+    _signup(c, "a@example.com")
+    _signup(TestClient(c.app), "b@example.com")
+    full = TestClient(c.app).post("/api/auth/signup", json={"email": "c@example.com", "password": "correct horse"})
+    assert full.status_code == 403 and "beta is full" in full.json()["detail"]
+    assert TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com",
+                                                          "password": "correct horse"}).status_code == 200
+
+
+def test_privacy_page_and_api_docs_switch(tmp_path, monkeypatch):
+    c = TestClient(_fresh_app(tmp_path, monkeypatch).app)
+    p = c.get("/privacy")
+    assert p.status_code == 200 and "What we store" in p.text and "scrypt" in p.text
+    assert c.get("/docs").status_code == 200                                 # local development: docs on
+    c = TestClient(_fresh_app(tmp_path / "p", monkeypatch, API_DOCS="0").app)
+    assert c.get("/docs").status_code == 404 and c.get("/openapi.json").status_code == 404
+    assert c.get("/api/health").json()["ok"]
+
+
+def test_behind_a_proxy_each_visitor_gets_their_own_rate_limit(tmp_path):
+    """Production runs uvicorn behind Caddy with --proxy-headers. Without it every visitor would share the proxy's
+    IP, so the 5-sign-ups-per-IP limit would block the whole site after five people."""
+    import os
+    import socket
+    import subprocess
+    import sys
+    import time
+    import urllib.request
+    root = __import__("pathlib").Path(__file__).resolve().parent.parent
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {**os.environ, "TTS_DB_PATH": str(tmp_path / "p.db"), "LLM_PROVIDER": "local",
+           "TRANSCRIBE_PROVIDER": "none", "AUTH_MODE": "accounts", "COOKIE_SECURE": "1"}
+    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", str(port),
+                             "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"],
+                            cwd=root, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        base = f"http://127.0.0.1:{port}"
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(base + "/api/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+
+        def signup(i, ip):
+            req = urllib.request.Request(base + "/api/auth/signup", method="POST",
+                                         data=json.dumps({"email": f"u{i}@example.com", "password": "correct horse"}).encode(),
+                                         headers={"Content-Type": "application/json", "X-Forwarded-For": ip,
+                                                  "X-Forwarded-Proto": "https"})
+            try:
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.status, r.headers.get("set-cookie", "")
+            except urllib.error.HTTPError as e:
+                return e.code, ""
+        results = [signup(i, f"203.0.113.{i}") for i in range(6)]        # six different visitors
+        assert [s for s, _ in results] == [200] * 6
+        assert "secure" in results[0][1].lower() and "httponly" in results[0][1].lower()
+        same = [signup(10 + i, "198.51.100.7")[0] for i in range(6)]        # one visitor, six accounts
+        assert same[:5] == [200] * 5 and same[5] == 429
+    finally:
+        proc.terminate()
+        proc.wait(10)
+
+
+def test_security_headers_allow_what_the_app_uses(anon):
+    r = anon.get("/")
+    csp = r.headers["content-security-policy"]
+    assert "script-src 'self' blob:" in csp and "frame-ancestors 'none'" in csp   # blob: = the mic audio worklet
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert "microphone=(self)" in r.headers["permissions-policy"]
+    assert "strict-transport-security" not in r.headers                         # only sent over HTTPS
+    assert "<script>" not in anon.get("/privacy").text                          # no inline scripts for CSP to block

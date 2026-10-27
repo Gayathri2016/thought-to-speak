@@ -148,6 +148,23 @@ login_failures = RateLimiter(10, 15 * 60)
 signups = RateLimiter(5, 60 * 60)
 
 
+# ---------------------------------------------------------------- public beta
+def _flag(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def beta() -> dict:
+    """Public-beta settings. BETA=1 shows the beta badge and feedback link; BETA_MAX_USERS caps sign-ups so a
+    free server isn't overrun (0 = no cap); FEEDBACK_URL is where testers report problems."""
+    try:
+        cap = max(0, int(os.getenv("BETA_MAX_USERS", "0")))
+    except ValueError:
+        cap = 0
+    return {"on": _flag("BETA"), "max_users": cap,
+            "feedback_url": os.getenv("FEEDBACK_URL", "https://github.com/Gayathri2016/thought-to-speak/issues").strip(),
+            "contact": os.getenv("CONTACT_EMAIL", "").strip()}
+
+
 def daily_limit() -> int:
     """Max analyzed takes per user per day (each costs a transcription + an LLM call). 0 = unlimited."""
     try:

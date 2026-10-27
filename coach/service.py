@@ -148,7 +148,8 @@ class AnalysisService:
         except ValueError as e:
             raise InputError(400, str(e), "bad_audio")
         voice["transcript_source"] = source
-        voice["browser_transcript"] = req.transcript.strip() if words else None
+        # Preserve the submitted draft even when an engine returns text without word timestamps.
+        voice["browser_transcript"] = req.transcript.strip() if tr and tr.get("text") else None
         out = self.run(us, req, text, voice, words, audio_tmp, now, job_id=job_id)
         if warn:
             out["analysis"]["warning"] = " ".join(filter(None, [out["analysis"].get("warning"), warn]))

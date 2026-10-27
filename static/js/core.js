@@ -7,7 +7,7 @@ export const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)
 export const DIMS = ["structure", "clarity", "relevance", "answer_quality", "delivery"];
 
 export const state = {
-  config: null, modes: {}, mode: "Interview", prompt: "", customPrompt: false,
+  config: null, modes: {}, mode: "Everyday Conversation", prompt: "", customPrompt: false,
   ctx: null, target: [60, 120], journey: null, lesson: null,
   chainId: null, takeNo: 1, lastAttempt: null, rec: null,
   recording: false, audioChunks: [], audioRate: 48000, cap: null, peakLevel: 0, noSR: false,

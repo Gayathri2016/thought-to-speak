@@ -1,5 +1,76 @@
 # Changelog
 
+## Unreleased — free public beta
+- Hosting kit for a $0 beta on Oracle Cloud Always Free (`deploy/oracle/`): one-command `setup.sh` (Python env,
+  Caddy with automatic HTTPS, firewall ports, hardened systemd service, swap on 1 GB servers, optional DuckDNS
+  updater), nightly SQLite-safe backups kept 7 days, `update.sh` that backs up and rolls back automatically if a
+  release doesn't start, and `pull-backup.sh` for off-site copies. Runbook: `docs/DEPLOY_BETA.md`.
+- Beta settings: `BETA` (badge + footer feedback link), `BETA_MAX_USERS` (sign-up cap), `FEEDBACK_URL`,
+  `CONTACT_EMAIL`; `API_DOCS=0` hides /docs in production.
+- `/privacy` page in plain language; linked from sign-up and the footer.
+- Security headers on every response (CSP that allows the microphone worklet, nosniff, referrer and permissions
+  policies, frame denial, HSTS over HTTPS).
+- Behind a proxy, uvicorn must run with `--proxy-headers` so sign-up / login rate limits see each visitor's IP —
+  tested end to end.
+
+## Unreleased — the mentor corrects grammar
+- New `coach/grammar.py`: rule-based grammar corrections for the most common spoken / second-language slips, each
+  with a one-line rule — past tense ("Yesterday we go … play" → "went … played", carried across the story and
+  stopped by "now / next time"), agreement ("she have", "he like", "people saves", "they is", "everybody are"),
+  verb forms ("can goes", "want go", "I am agree", "have went", "enjoy to cook", "have seen … last week"), pronouns
+  ("me and my son went" → "my son and I went", "my son he"), nouns ("informations", "two time"), word choice
+  ("explain me", "say me", "discuss about", "go to home", "more easy") and capitals. Checked against correct
+  English and the scoring benchmark for false corrections.
+- Grammar fixes appear in "Say it like this" and line by line ("“go” → “went”: you're talking about the past…");
+  "Grammar to practise" lists the speaker's most frequent patterns with a lesson and their own examples.
+- Three or more slips make grammar the first fix (after an off-topic answer), with the lesson as the retry focus.
+- Challenge Mode keeps the lessons but hides the corrected words.
+- The grammar list under Words & sentences uses the same engine.
+
+## Unreleased — the built-in mentor rewrites your answer
+- "Say it like this": without an API key, the coach now rewrites the take from the speaker's own words — a spoken
+  run-on becomes sentences (split where a new subject starts), fillers, false starts ("have some car had some
+  coffee"), stacked hedges in work modes and sign-offs ("that's all") are removed, short same-subject sentences are
+  joined, and the answer is placed in the scenario's order (e.g. Opening → Detail → Question). Lines the
+  scenario needs but the speaker didn't say are added and labelled; a missing middle part becomes a "[fill in]"
+  prompt — no invented facts. Opinions get "Point. That's because …" split out; prompt follow-ups are turned
+  around ("ask what they recommend" → "What would you recommend?"). Shown in the focus card and at the top of
+  the full review, with Listen. Challenge Mode never shows it.
+- Line by line: each sentence as said → how to say it → why, most instructive fixes first.
+- Off-topic answers: when the prompt asks for a recommendation or an opinion and the answer doesn't give one,
+  that becomes the first fix (relevance capped at 40), with a starter line built from the speaker's own words.
+- Accuracy: "a.m." / "p.m." no longer end a sentence or trigger an "a m → an m" grammar flag; "Keep doing" and
+  "Fix first" never quote the same words; a missing opening is no longer called "warm-up"; two fillers in a
+  100-word stretch no longer outrank structure; quotes from unpunctuated speech are short clauses, not 24-word
+  chunks; the conversation partner asks a natural follow-up. Heuristic scoring version h10.
+- Removed "add an API key" messages from results.
+
+## Unreleased — a more inviting first run
+- Sign-up shows what you get: the practice loop, a short before/after example, and three plain promises
+  (on phones: the promise, then the form).
+- Practice is built around one large mic button whose halo follows your voice; "Get my feedback" and
+  "Start over" replace Analyze / Clear; transcript caveats moved under "About the transcript".
+- A day strip on every tab: greeting, today's takes toward a 3-take goal, the day streak, and one next step.
+  Reaching the goal shows a one-time toast.
+- Results open with one honest headline (and "Up N points" after an improved retry); the score ring draws
+  and counts up once (skipped with reduced motion). The empty coaching panel explains the speak → tip → retry loop.
+- Phones: tabs become a bottom bar; scenarios scroll in one row so the mic sits near the fold.
+- New look: studio teal, recording red only while the mic is live, amber for streaks; rounded system display
+  type (no web fonts, so it still works offline and loads nothing from third parties); sentence-case labels.
+- Header badge reads "Built-in coach" / "AI coach", with engine details in its tooltip.
+- `static/js/habit.js` (daily goal, streak copy, result headlines) with node tests.
+
+## Unreleased — everyday practice and transcript handling
+- Practice opens first with four everyday scenarios and 24 prompts. Professional scenarios remain available
+  under Work & presentations; everyday scenarios use their own goals, rubrics and listener feedback.
+- Removed FDE / Customer from scenario choices; its scoring metadata remains for older lessons and history.
+- Analysis waits for final browser recognition results after Stop, deduplicates repeated final segments and
+  discards late results from a cleared take. A bounded timeout never promotes unconfirmed previews to speech.
+- Prolonged hesitation spellings such as “ummm” and “uhhh” are counted. Filler counts are explicitly described
+  as transcript observations: recognition can omit fillers and zero detected does not mean none were spoken.
+- Recording results retain the submitted live draft even without word timings, so differing transcripts can
+  be compared. Heuristic scoring version is h9; existing saved attempts remain unchanged.
+
 ## v9.2 — deletion races
 - A retry job finishing after you delete an earlier take no longer writes its comparison against that take back:
   completion re-checks both comparison fields inside its transaction. Comparison-cache writes only land while both

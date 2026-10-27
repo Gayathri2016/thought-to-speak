@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f2b2a">
+<meta name="description" content="Practice speaking out loud, get one useful tip, and say it better on your next try.">
 <title>Thought → Speak</title>
 <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -10,10 +12,10 @@
 <header class="top">
   <div class="wrap top-inner">
     <div class="brand">
-      <div class="logo" aria-hidden="true">T→S</div>
+      <div class="logo" aria-hidden="true"><span class="logo-wave"><i></i><i></i><i></i><i></i></span></div>
       <div>
-        <h1>Thought → Speak</h1>
-        <p>Speak → Analyze → Retry → Compare. Become the speaker, not the prompt-copier.</p>
+        <h1>Thought → Speak <span id="betaBadge" class="beta-badge hidden" title="Free public beta">Beta</span></h1>
+        <p>Say it out loud. Get one tip. Say it better.</p>
       </div>
     </div>
     <div class="top-right">
@@ -29,18 +31,41 @@
     </div>
   </div>
   <nav class="wrap tabs" role="tablist">
-    <button class="tab active" data-tab="learn" role="tab">📚 Learn</button>
-    <button class="tab" data-tab="practice" role="tab">🎙️ Practice</button>
-    <button class="tab" data-tab="pronounce" role="tab">🗣️ Pronounce</button>
-    <button class="tab" data-tab="progress" role="tab">📈 Progress</button>
-    <button class="tab" data-tab="history" role="tab">🗂️ History</button>
+    <button class="tab" data-tab="learn" role="tab"><span class="tab-ic" aria-hidden="true">📚</span><span>Learn</span></button>
+    <button class="tab active" data-tab="practice" role="tab"><span class="tab-ic" aria-hidden="true">🎙️</span><span>Practice</span></button>
+    <button class="tab" data-tab="pronounce" role="tab"><span class="tab-ic" aria-hidden="true">🗣️</span><span>Pronounce</span></button>
+    <button class="tab" data-tab="progress" role="tab"><span class="tab-ic" aria-hidden="true">📈</span><span>Progress</span></button>
+    <button class="tab" data-tab="history" role="tab"><span class="tab-ic" aria-hidden="true">🗂️</span><span>History</span></button>
   </nav>
 </header>
 
 <!-- ============================== SIGN IN ============================== -->
 <div id="authScreen" class="auth-screen hidden">
+  <div class="auth-layout">
+  <section class="auth-pitch" aria-label="What you get">
+    <div class="auth-brand"><div class="logo" aria-hidden="true"><span class="logo-wave"><i></i><i></i><i></i><i></i></span></div>Thought → Speak
+      <span id="authBeta" class="beta-badge hidden">Free beta</span></div>
+    <h2 class="auth-hero">Say it out loud.<br>Get one tip.<br>Say it better.</h2>
+    <p class="auth-lead">A practice partner for the moments you want to get right — catching up with a friend,
+      telling a story, speaking up at work. Two minutes a day is enough to hear the difference.</p>
+    <figure class="demo" aria-label="Example: a first take and a retry">
+      <div class="demo-take">
+        <div class="demo-h"><span>Take 1</span><b>58</b></div>
+        <p>“Um, so, my weekend was fine I guess, we kind of went to the lake and stuff.”</p>
+      </div>
+      <div class="demo-tip"><span aria-hidden="true">💡</span> Lead with one vivid detail, then ask them back.</div>
+      <div class="demo-take after">
+        <div class="demo-h"><span>Take 2</span><b>81</b></div>
+        <p>“We rented a tiny cabin by the lake and my nephew caught his first fish. How was yours?”</p>
+      </div>
+    </figure>
+    <ul class="auth-points">
+      <li>Prompts for everyday conversations, stories, opinions and work</li>
+      <li>Feedback on what you said <em>and</em> how it sounded</li>
+      <li>A streak and a small daily goal to keep you coming back</li>
+    </ul>
+  </section>
   <div class="auth-card card">
-    <div class="logo" aria-hidden="true">T→S</div>
     <h2 id="authTitle">Create your account</h2>
     <p class="muted small" id="authSub">Practice out loud, get coached on content and voice, and track your progress.</p>
     <form id="authForm" novalidate>
@@ -57,16 +82,16 @@
     <p class="small auth-switch"><span id="authSwitchText">Already have an account?</span>
       <a href="#" id="authSwitch">Sign in</a></p>
     <p class="muted small auth-privacy">Your recordings and transcripts are private to your account. You can delete
-      your account and everything in it at any time.</p>
+      your account and everything in it at any time. <a href="/privacy">Privacy</a></p>
+  </div>
   </div>
 </div>
 
 <main class="wrap" id="appMain">
+  <section id="dayStrip" class="day-strip hidden" aria-live="polite"></section>
   <!-- ============================== PRACTICE ============================== -->
   <section id="tab-learn" class="tabpanel">
     <div id="learnHome">
-      <div id="baselineCard"></div>
-      <div id="programCard"></div>
       <div class="card today-card">
         <div class="row between wrap-row">
           <div>
@@ -78,6 +103,8 @@
         <div id="todayItems" class="today-items"></div>
         <div id="todayWords" class="today-words"></div>
       </div>
+      <div id="baselineCard"></div>
+      <div id="programCard"></div>
       <div class="adaptive-row">
         <div id="skillsCard" class="card"></div>
         <div id="weeklyCard" class="card"></div>
@@ -140,8 +167,9 @@
       <!-- left: prompt + recorder -->
       <div class="col">
         <div class="card">
-          <div class="card-h"><span class="step">1</span> Choose a scenario</div>
-          <div id="modeChips" class="chips" role="radiogroup"></div>
+          <div class="card-h"><span class="step">1</span> What would you like to practice?</div>
+          <div id="modeChips" role="radiogroup" aria-label="Practice scenario"></div>
+          <p id="scenarioGoal" class="small muted"></p>
           <div class="prompt-box">
             <div class="row between">
               <span class="eyebrow" id="promptLabel">Your prompt</span>
@@ -154,7 +182,7 @@
             <textarea id="promptEdit" class="hidden" rows="2" maxlength="1000"
                       placeholder="Type your own question or topic…"></textarea>
             <div class="row gap-s wrap-row" id="frameworkRow">
-              <span class="muted small">Framework:</span>
+              <span class="muted small">Try this order:</span>
               <span id="frameworkPills" class="pills"></span>
               <span id="targetTime" class="muted small"></span>
             </div>
@@ -168,19 +196,39 @@
           </div>
           <div class="timebar" aria-hidden="true"><div id="timeFill"></div><div id="timeTarget"></div></div>
 
-          <div class="row gap-s wrap-row" style="margin:14px 0 10px">
-            <button id="recordBtn" class="record">● Start speaking</button>
-            <button id="analyzeBtn" class="primary">Analyze</button>
-            <button id="clearBtn" class="ghost">Clear</button>
-          </div>
-          <div class="mic-row">
-            <span class="mic-label" id="micLabel">🎤 Mic off</span>
-            <div class="level" aria-hidden="true"><div id="levelFill"></div></div>
-            <span class="small muted" id="audioLen"></span>
+          <div class="studio">
+            <button id="recordBtn" class="record" aria-pressed="false">
+              <span class="rec-halo" aria-hidden="true"></span>
+              <span class="rec-core" aria-hidden="true"><span class="rec-dot"></span></span>
+              <span class="rec-label">Tap to speak</span>
+            </button>
+            <div class="studio-side">
+              <div class="mic-row">
+                <span class="mic-label" id="micLabel">Mic off</span>
+                <div class="level" aria-hidden="true"><div id="levelFill"></div></div>
+                <span class="small muted" id="audioLen"></span>
+              </div>
+              <p class="studio-hint" id="studioHint">Talk the way you would to a real person — no script. You can stop and start again any time.</p>
+              <div class="row gap-s wrap-row studio-actions">
+                <button id="analyzeBtn" class="primary">Get my feedback</button>
+                <button id="clearBtn" class="link-btn">Start over</button>
+              </div>
+            </div>
           </div>
           <div id="interim" class="interim hidden"></div>
-          <textarea id="transcript" rows="8"
-            placeholder="Press “Start speaking” and talk naturally — don't script it. You can also type or paste."></textarea>
+          <label for="transcript" class="small transcript-label"><b>What you said</b> <span class="muted">· fix any words the browser misheard</span></label>
+          <textarea id="transcript" rows="6"
+            placeholder="Your words appear here as you speak. You can also type or paste an answer."></textarea>
+          <details class="transcript-about">
+            <summary>About the transcript</summary>
+            <p id="transcriptNote" class="small muted" aria-live="polite"></p>
+          </details>
+          <details id="transcriptVersions" class="hidden">
+            <summary>Compare the live draft with the recording transcript</summary>
+            <p class="small muted">The box above contains the transcript used for coaching. Play your recording in “Your voice” to check it. Neither recognizer guarantees every word or filler.</p>
+            <b class="small">Live draft submitted</b>
+            <p id="browserTranscript" class="transcript-quote"></p>
+          </details>
           <div class="row between wrap-row" style="margin-top:10px">
             <label class="switch">
               <input type="checkbox" id="challenge">
@@ -204,16 +252,19 @@
         <div class="card" id="resultsCard">
           <div class="card-h"><span class="step">3</span> Coaching</div>
           <div id="emptyState" class="empty">
-            <div class="empty-icon">🎙️</div>
-            <p>Answer the prompt out loud, then hit <b>Analyze</b>.</p>
-            <p class="muted small">You'll get scores on structure, clarity, relevance, answer quality and delivery —
-              then retry and compare.</p>
+            <p class="empty-title">Your coaching shows up here</p>
+            <ol class="loop">
+              <li data-ic="🎙️"><b>Speak</b><span>Answer the prompt out loud, the way you'd say it to a person.</span></li>
+              <li data-ic="💡"><b>Get one tip</b><span>See what worked and the one change that matters most.</span></li>
+              <li data-ic="🔁"><b>Say it better</b><span>Retry the same prompt and watch your score move.</span></li>
+            </ol>
           </div>
 
           <div id="results" class="hidden">
             <div id="warning" class="warn hidden"></div>
             <div id="lessonResult" class="lesson-result hidden"></div>
             <div id="pronCard" class="pron hidden"></div>
+            <p id="scoreHeadline" class="score-headline"></p>
             <div class="score-row">
               <div class="ring" id="ring" role="img" aria-label="Overall score">
                 <svg viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="52"/>
@@ -226,7 +277,7 @@
             <div id="focusCard" class="focus hidden" aria-live="polite"></div>
 
             <details class="more" id="moreReview" data-key="review">
-              <summary>📋 Full review <span class="small muted">interviewer · corrections · part by part · coach · mentor</span></summary>
+              <summary>📋 Full review <span class="small muted">listener · corrections · part by part · coach · mentor</span></summary>
             <div id="reviewCard" class="rv hidden"></div>
             <div class="split" id="legacyFeedback">
               <div><h3>✅ What worked</h3><ul id="strengths"></ul></div>
@@ -285,6 +336,7 @@
             <div class="metrics" id="metrics"></div>
             <p id="provenanceLine" class="small muted prov-line"></p>
             <div id="fillerChips" class="chips small-chips"></div>
+            <p id="fillerNote" class="small muted"></p>
             </details>
 
             <div class="next">
@@ -396,6 +448,12 @@
   </section>
 </main>
 
+<footer class="site-foot wrap" id="siteFoot">
+  <span id="footBeta" class="hidden">Free beta — thanks for trying it.</span>
+  <a id="footFeedback" class="hidden" href="#" target="_blank" rel="noopener">Send feedback</a>
+  <a href="/privacy">Privacy</a>
+</footer>
+<div id="toast" class="toast hidden" role="status"></div>
 <div id="tooltip" class="tooltip hidden" role="tooltip"></div>
 <div id="wordPop" class="word-pop hidden" role="dialog" aria-label="Word pronunciation"></div>
 <script type="module" src="/static/js/main.js"></script>

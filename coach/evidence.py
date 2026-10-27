@@ -216,6 +216,12 @@ def focus(rv: dict, fb: dict, mode_target: tuple | None = None) -> dict:
         priority = {"text": (fb.get("improvements") or ["Tighten it: same content, fewer words."])[0],
                     "quote": None, "start": None, "end": None, "why": None}
         retry = (co.get("do_next") or [fb.get("next_challenge") or "Retry with one change."])[0]
+    off = rv.get("off_topic")
+    if off:                                           # not answering the question outranks every other fix
+        priority = {"text": off["message"], "quote": None, "start": None, "end": None, "why": None}
+        retry = off["retry"]
+    if strength.get("quote") and strength["quote"] == priority.get("quote"):
+        strength = {**strength, "quote": None, "start": None, "end": None}   # never praise and fault the same words
     if mode_target:
         retry = retry.rstrip(".") + f". Aim for {mode_target[0]}–{mode_target[1]} seconds."
     return {"strength": strength, "priority": priority, "retry": retry}

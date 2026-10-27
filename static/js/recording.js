@@ -2,8 +2,10 @@
 import { $, esc, fmtTime, state } from "./core.js";
 import { api, pollJob, rememberJob, submitJob } from "./api.js";
 import { createTakeController } from "./takes.js";
+import { createSpeechSession } from "./speech.js";
 import { openLesson, renderLessonResult } from "./curriculum.js";
-import { showTab } from "./main.js";
+import { refreshDay, showTab } from "./main.js";
+import { scoreHeadline } from "./habit.js";
 import { renderAnalysis, renderComparison, renderFocus, renderLanguage, renderPronunciation, renderVoice, speak, syncMore, wordsHtml } from "./results.js";
 
 export const READ_ALOUD = "Read aloud";
@@ -23,8 +25,10 @@ export function setMode(mode, prompt) {
   try { localStorage.setItem("tts-mode", mode); } catch (_) {}
   document.querySelectorAll("#modeChips .chip").forEach((c) => {
     const on = c.dataset.mode === mode; c.classList.toggle("active", on); c.setAttribute("aria-checked", on);
+    if (on && c.closest("details")) c.closest("details").open = true;
   });
   const m = state.modes[mode];
+  $("scenarioGoal").textContent = m.goal;
   const labels = state.ctx?.framework || m.framework;
   const target = state.ctx?.target || m.target_seconds;
   state.target = target;
@@ -49,6 +53,7 @@ export function clearCtx() { state.ctx = null; $("recBanner").classList.add("hid
 
 export function setReadAloud(text) {
   state.mode = READ_ALOUD;
+  $("scenarioGoal").textContent = "Read the sentence at a comfortable pace. The check measures words recognized, not individual sounds.";
   document.querySelectorAll("#modeChips .chip").forEach((c) => c.classList.remove("active"));
   const target = state.ctx?.target || [4, 15];
   state.target = target;
@@ -96,10 +101,13 @@ export function newChain() {
 
 export function resetTake() {
   stopRecording();
+  state.speech?.discard();                    // late results from the old take must not fill the next one
   $("transcript").value = ""; $("interim").classList.add("hidden");
   state.audioChunks = []; $("audioLen").textContent = "";
-  state.elapsed = 0; state.spokeSeconds = 0; renderTimer();
+  state.elapsed = 0; state.spokeSeconds = 0; renderTimer(); setRecordButton(false);
   takes.reset();                              // a new take gets a new idempotency key
+  $("transcriptVersions").classList.add("hidden");
+  $("browserTranscript").textContent = "";
   $("status").textContent = "";
 }
 
@@ -110,7 +118,7 @@ $("newPromptBtn").onclick = async () => {
     if (state.mode === READ_ALOUD) setReadAloud(next); else setPrompt(next);
     return;
   }
-  if (state.mode === READ_ALOUD) { clearCtx(); return setMode(state.lastMode || "Interview"); }
+  if (state.mode === READ_ALOUD) { clearCtx(); return setMode(state.lastMode || "Everyday Conversation"); }
   clearCtx(); setMode(state.mode);
   const r = await api(`/api/prompt?mode=${encodeURIComponent(state.mode)}&exclude=${encodeURIComponent(state.prompt)}`);
   setPrompt(r.prompt);
@@ -156,59 +164,72 @@ export function setupSpeech() {
   }
   const rec = new SR();
   rec.continuous = true; rec.interimResults = true; rec.lang = "en-US";
-  rec.onresult = (e) => {
-    let finalText = "", interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalText += t + " "; else interim += t;
-    }
-    if (finalText.trim()) {
+  state.speech = createSpeechSession({
+    recognition: rec,
+    append: (finalText) => {
       const ta = $("transcript");
-      ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + finalText.trim();
-    }
-    $("interim").textContent = interim ? `…${interim}` : "";
-    $("interim").classList.toggle("hidden", !interim);
-  };
-  rec.onerror = (e) => {
-    if (e.error === "no-speech" || e.error === "aborted") return;
-    $("status").textContent = e.error === "not-allowed"
-      ? "Microphone permission denied. Allow mic access in your browser." : `Speech error: ${e.error}`;
-    stopRecording();
-  };
-  rec.onend = () => { if (state.recording) { try { rec.start(); } catch (_) {} } };
+      ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + finalText;
+    },
+    preview: (interim) => {
+      $("interim").textContent = interim ? `…${interim}` : "";
+      $("interim").classList.toggle("hidden", !interim);
+    },
+    error: (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      stopRecording();
+      $("status").textContent = e.error === "not-allowed"
+        ? "Microphone permission denied. Allow mic access in your browser." : `Speech error: ${e.error}`;
+    },
+    ended: () => { if (state.recording) { try { state.speech.start(); } catch (_) {} } },
+    timedOut: () => { $("transcriptNote").textContent = "The browser did not confirm the last words in time. Review the ending before analyzing; unconfirmed words were not added."; },
+  });
   state.rec = rec;
 }
 
 $("recordBtn").onclick = () => (state.recording ? stopRecording() : startRecording());
 
 export async function startRecording() {
+  if (state.recording || state.starting || state.analyzing || takes.busy) return;
+  state.starting = true;
   try {
+    await state.speech?.stop();
     await startCapture();
   } catch (e) {
     $("status").textContent = e.name === "NotAllowedError" ? "Microphone permission denied. Allow mic access in your browser."
       : `Could not open the microphone: ${e.message}`;
     return;
+  } finally {
+    state.starting = false;
   }
   state.recording = true;
-  if (state.rec) { try { state.rec.start(); } catch (_) {} }
-  $("recordBtn").textContent = "■ Stop"; $("recordBtn").classList.add("on");
+  if (state.speech) { try { state.speech.start(); } catch (_) {} }
+  setRecordButton(true);
   $("status").textContent = "Listening… speak naturally.";
   state.tickStart = performance.now();
   state.timerId = setInterval(renderTimer, 250);
 }
 
 export function stopRecording() {
-  if (!state.recording) return;
+  if (!state.recording) return state.speech?.stop() || Promise.resolve();
   state.recording = false;
-  if (state.rec) { try { state.rec.stop(); } catch (_) {} }
+  const drained = state.speech?.stop() || Promise.resolve();
   stopCapture();
   state.elapsed += (performance.now() - state.tickStart) / 1000;
   state.spokeSeconds = state.elapsed;
   clearInterval(state.timerId);
-  $("recordBtn").textContent = "● Start speaking"; $("recordBtn").classList.remove("on");
+  setRecordButton(false);
   $("interim").classList.add("hidden");
-  $("status").textContent = "Stopped. Hit Analyze.";
+  $("status").textContent = "Stopped. Tap “Get my feedback” when you're ready — or tap the mic to keep going.";
   renderTimer();
+  return drained;
+}
+
+export function setRecordButton(on) {
+  const b = $("recordBtn");
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+  b.querySelector(".rec-label").textContent = on ? "Tap to stop" : (state.elapsed > 0 ? "Keep talking" : "Tap to speak");
+  if (!on) b.style.setProperty("--lvl", "0");
 }
 
 export function currentSeconds() {
@@ -217,7 +238,9 @@ export function currentSeconds() {
 export function renderTimer() {
   const s = currentSeconds();
   $("timer").textContent = fmtTime(s);
-  $("levelFill").style.width = `${Math.min(100, Math.sqrt(state.peakLevel) * 260)}%`;
+  const lvl = Math.min(1, Math.sqrt(state.peakLevel) * 2.6);
+  $("levelFill").style.width = `${lvl * 100}%`;
+  if (state.recording) $("recordBtn").style.setProperty("--lvl", lvl.toFixed(2));   // the halo follows your voice
   state.peakLevel = 0;
   const secs = audioSeconds();
   $("audioLen").textContent = secs ? `${secs.toFixed(1)}s recorded` : "";
@@ -228,36 +251,42 @@ export function renderTimer() {
 /* ------------------------------------------------------------------ analyze */
 $("analyzeBtn").onclick = analyze;
 export async function analyze() {
-  if (takes.busy) return;                     // a double-click while queued/running never creates a second job
-  stopRecording();
-  const transcript = $("transcript").value.trim();
-  const hasAudio = audioSeconds() > 1.5;
-  const canTranscribe = state.config.transcriber !== "none";
-  const minWords = state.mode === READ_ALOUD ? 1 : 3;
-  if (transcript.split(/\s+/).filter(Boolean).length < minWords && !(hasAudio && canTranscribe)) {
-    $("status").textContent = hasAudio ? "No transcript captured — use Chrome/Edge for live transcription, set up Whisper, or type your answer."
-      : "Speak or type a few sentences first.";
-    return;
-  }
-  if (state.customPrompt) { const v = $("promptEdit").value.trim(); if (v) setPromptKeepChain(v); }
+  if (takes.busy || state.analyzing) return;
+  state.analyzing = true;
+  const recordDisabled = $("recordBtn").disabled;
+  $("recordBtn").disabled = true;
   $("analyzeBtn").disabled = true;
-  $("status").textContent = hasAudio ? (canTranscribe ? "Transcribing and analyzing your voice…" : "Analyzing your voice…") : "Analyzing…";
-  const body = {
-    transcript, mode: state.mode, prompt: state.prompt,
-    challenge_mode: $("challenge").checked,
-    duration_seconds: state.spokeSeconds > 3 ? Math.round(state.spokeSeconds) : null,
-    chain_id: state.chainId,
-    kind: state.ctx?.kind || "free",
-    lesson_id: state.ctx?.kind === "lesson" ? state.ctx.lessonId : null,
-    target_text: state.mode === READ_ALOUD ? state.prompt : null,
-  };
-  if (state.mode === READ_ALOUD && body.kind === "free") body.kind = "read_aloud";
   try {
+    await stopRecording();                      // recognition may send the last words after stop()
+    const transcript = $("transcript").value.trim();
+    const hasAudio = audioSeconds() > 1.5;
+    const canTranscribe = state.config.transcriber !== "none";
+    const minWords = state.mode === READ_ALOUD ? 1 : 3;
+    if (transcript.split(/\s+/).filter(Boolean).length < minWords && !(hasAudio && canTranscribe)) {
+      $("status").textContent = hasAudio ? "No transcript captured — use Chrome/Edge for live transcription, set up Whisper, or type your answer."
+        : "Speak or type a few sentences first.";
+      return;
+    }
+    if (state.customPrompt) { const v = $("promptEdit").value.trim(); if (v) setPromptKeepChain(v); }
+    $("analyzeBtn").disabled = true;
+    $("status").textContent = hasAudio ? (canTranscribe ? "Transcribing and analyzing your voice…" : "Analyzing your voice…") : "Analyzing…";
+    const body = {
+      transcript, mode: state.mode, prompt: state.prompt,
+      challenge_mode: $("challenge").checked,
+      duration_seconds: state.spokeSeconds > 3 ? Math.round(state.spokeSeconds) : null,
+      chain_id: state.chainId,
+      kind: state.ctx?.kind || "free",
+      lesson_id: state.ctx?.kind === "lesson" ? state.ctx.lessonId : null,
+      target_text: state.mode === READ_ALOUD ? state.prompt : null,
+    };
+    if (state.mode === READ_ALOUD && body.kind === "free") body.kind = "read_aloud";
     showJobResult(await takes.run(body, hasAudio));
   } catch (e) {
     // a network error keeps the take's key, so pressing Analyze again re-attaches to the same job
     $("status").textContent = e.status ? e.message : `${e.message || "Connection problem"} — press Analyze to try again.`;
   } finally {
+    state.analyzing = false;
+    $("recordBtn").disabled = recordDisabled;
     $("analyzeBtn").disabled = false;
   }
 }
@@ -273,7 +302,15 @@ export function showJobResult(job) {
     state.lastAttempt = r.attempt; state.chainId = r.attempt.chain_id;
     $("transcript").value = r.attempt.transcript;   // show exactly what was analyzed (Whisper text if used)
   }
+  const liveDraft = r.analysis.voice?.browser_transcript;
+  $("transcriptVersions").classList.toggle("hidden", !liveDraft || liveDraft === r.attempt?.transcript);
+  $("browserTranscript").textContent = liveDraft || "";
+  $("transcriptNote").textContent = r.analysis.voice
+    ? `Transcript used: ${r.analysis.voice.transcript_source}. Recognition can change words or omit fillers. Compare with the recording in Your voice.`
+    : "Coaching uses the text in the box. Filler counts describe that text, not every sound you may have spoken.";
   renderAnalysis(r.analysis);
+  const delta = r.comparison?.deltas?.overall;
+  $("scoreHeadline").textContent = scoreHeadline(r.analysis.overall_score, typeof delta === "number" ? delta : null);
   if (r.attempt) renderVoice(r.analysis.voice, r.attempt.id); else $("voiceCard").classList.add("hidden");
   renderPronunciation(r.analysis);
   renderLanguage(r.analysis);
@@ -284,6 +321,7 @@ export function showJobResult(job) {
   else $("compareCard").classList.add("hidden");
   $("status").textContent = !r.attempt ? "Analyzed (not saved)." : r.attempt.attempt_no > 1
     ? "Compared with your previous take ↓" : "Saved. Now retry — don't copy, re-speak.";
+  if (r.attempt) refreshDay({ celebrate: true });   // the day strip and the daily-goal moment
   if (innerWidth < 900) $("resultsCard").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -335,7 +373,7 @@ export async function startCapture() {
   src.connect(node); node.connect(mute); mute.connect(ctx.destination);
   state.audioRate = ctx.sampleRate;
   state.cap = { stream, ctx, src, node, mute };
-  $("micLabel").textContent = "🔴 Recording audio";
+  $("micLabel").textContent = "Recording";
 }
 
 export function stopCapture() {
@@ -344,7 +382,7 @@ export function stopCapture() {
   c.stream.getTracks().forEach((t) => t.stop());
   c.ctx.close();
   state.cap = null;
-  $("micLabel").textContent = "🎤 Mic off"; $("levelFill").style.width = "0";
+  $("micLabel").textContent = "Mic off"; $("levelFill").style.width = "0";
 }
 
 export function audioSeconds() {

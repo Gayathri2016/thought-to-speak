@@ -128,7 +128,7 @@ export function renderToday(t) {
     practiceWith({ mode: it.mode, prompt: it.prompt, challenge: it.challenge_mode,
       ctx: { kind: it.kind, title: it.title, constraint: it.constraint || (it.kind === "warmup" ? "No prep — start talking within 5 seconds." : ""),
         steps: it.steps || [], target: it.target_seconds || null } });
-    if (it.kind === "warmup") $("status").textContent = "Hit “Start speaking” now — no prep.";
+    if (it.kind === "warmup") $("status").textContent = "Tap the mic and start — no prep.";
   }));
   $("todayWords").innerHTML = t.words?.length ? `
     <div class="tw-h"><span class="eyebrow">Today's words</span>

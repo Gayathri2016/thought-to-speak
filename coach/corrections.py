@@ -126,7 +126,7 @@ def _finish(words: list[str]) -> str:
     s = re.sub(r"[,;:\s]+$", "", s)
     s = re.sub(r"\bi\b", "I", s)
     s = re.sub(r"\bi'(m|ve|ll|d)\b", lambda m: "I'" + m.group(1), s)
-    s = re.sub(r"^(yes|no|okay|ok|well|sure|right)\s+(?=\w)", lambda m: m.group(1) + ", ", s, flags=re.I)
+    s = re.sub(r"^(yes|no|okay|ok|well|sure|right|hi|hey|hello)\s+(?=\w)", lambda m: m.group(1) + ", ", s, flags=re.I)
     if s:
         s = s[0].upper() + s[1:]
         if not re.search(r"[.!?]$", s):

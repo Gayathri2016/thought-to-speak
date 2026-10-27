@@ -1,5 +1,5 @@
 /* Thought → Speak — auth.js: Accounts: sign-in screen, account menu, sign-out and delete account, app boot. */
-import { $ } from "./core.js";
+import { $, state } from "./core.js";
 import { api } from "./api.js";
 import { init } from "./main.js";
 import { resumeActiveJob } from "./recording.js";
@@ -23,6 +23,7 @@ export function showAuth(view = "signup", message = "") {
   $("authError").textContent = message;
   $("authError").classList.toggle("hidden", !message);
   setTimeout(() => $(up ? "authName" : "authEmail").focus(), 0);
+  api("/api/config").then((c) => $("authBeta").classList.toggle("hidden", !c.beta?.on)).catch(() => {});
 }
 $("authSwitch").onclick = (e) => { e.preventDefault(); showAuth(authView === "signup" ? "signin" : "signup"); };
 $("authForm").onsubmit = async (e) => {
@@ -43,6 +44,7 @@ $("authForm").onsubmit = async (e) => {
 export function showAccount(me) {
   if (me.mode !== "accounts" || !me.user) return;
   const u = me.user, label = (u.name || u.email).trim();
+  state.userName = (u.name || "").trim().split(/\s+/)[0] || "";
   $("accountMenu").classList.remove("hidden");
   $("dangerZone").classList.remove("hidden");
   $("accountBtn").textContent = label.slice(0, 1).toUpperCase();

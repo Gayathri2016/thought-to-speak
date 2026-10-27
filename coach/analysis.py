@@ -9,6 +9,7 @@ from . import pronunciation as pron
 from . import evidence
 from . import provider_schema
 from . import review as review_mod
+from . import rewrite
 from . import scoring
 from .prompts import MODES, normalize_mode
 
@@ -32,6 +33,9 @@ you're let's us them his her its""".split())
 
 # Cue words used to detect whether each framework element shows up in the transcript.
 FRAMEWORK_CUES = {
+    "Opening": [" hi ", " hi,", " hi!", " hello", " hey ", " hey,", " hey!", "good morning", "nice to meet", "my name", "i'm", "i am"],
+    "Detail": ["i enjoy", "i like", "i love", "my weekend", "yesterday", "today", "we went", "i went", "i tried", "i spent", "because"],
+    "Question": ["?", "how about you", "what about you", "do you", "have you", "what do you", "how was your"],
     "Situation": ["when i", "at my", "we were", "there was", "the situation", "back in", "last year", "context",
                   "in my last role", "in my previous role", "in my last job", "in my current role", "last quarter"],
     "Task": ["my role", "i was responsible", "i needed", "the goal", "my job", "tasked", "i owned", "objective", "my task", "my responsibility", "i had to"],
@@ -129,6 +133,14 @@ FRAMEWORK_CUES = {
 }
 
 QUALITY_CUES = {
+    "Everyday Conversation": [r"\bhi\b|\bhello\b|nice to meet", r"\bi\b", r"\benjoy|\blike|\blove",
+                              r"\bbecause\b|for example", r"\?|how about you|what about you|do you"],
+    "Tell a Story": [r"\bwhen\b|\blast\b|\bone day\b", r"\bi\b", r"\bthen\b|\bdecided\b",
+                     r"\bresult\b|\bended up\b|\bfinally\b", r"\blearned\b|\brealized\b|\btaught\b"],
+    "Share an Opinion": [r"\bi prefer\b|\bi think\b|\bi believe\b", r"\bbecause\b", r"for example|for instance",
+                         r"\bwhen\b|\bi tried\b", r"that's why|so my view|in the end"],
+    "Difficult Conversations": [r"\bunderstand\b|\bappreciate\b", r"\bi need\b|\bi would\b|\bcould\b",
+                                r"\bbecause\b", r"\blet's\b|\bnext time\b", r"\bplease\b|\bthank\b"],
     "Interview": [r"\bi\b", r"\bresult", r"\blearn", r"\bimpact", r"\bdecid"],
     "Leadership": [r"\bteam\b", r"\bbecause\b", r"\bpriorit", r"\bnext\b", r"\bown"],
     "Technical Explanation": [r"for example|for instance", r"\bbecause\b", r"trade-?off|downside|instead",
@@ -237,7 +249,8 @@ def heuristic_feedback(mode: str, m: dict, scores: dict, fmap: list[dict], chall
     if present:
         strengths.append(f"Your answer already covers: {', '.join(present)}.")
     if m["filler_rate"] < 2 and m["word_count"] >= 30:
-        strengths.append(f"Low filler rate ({m['filler_rate']} per 100 words) — you sound composed.")
+        strengths.append(f"Few fillers appear in this transcript ({m['filler_rate']} per 100 words). "
+                         "Speech recognition may leave some out.")
     if m["transitions"]:
         strengths.append(f"You used signposting words ({', '.join(m['transitions'][:3])}) that help listeners follow.")
     if m["has_numbers"]:
@@ -513,6 +526,9 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     if voice and voice.get("speaking_rate_wpm"):
         m["wpm"] = voice["speaking_rate_wpm"]
     h = heuristic_scores(text, mode, prompt, m, spec)
+    off_topic = rewrite.intent_check(prompt, text)
+    if off_topic:                                     # sharing words with the prompt isn't answering it
+        h["scores"]["relevance"] = min(h["scores"]["relevance"], 40)
     scores = dict(h["scores"])
     voice_scores = None
     if voice:
@@ -577,7 +593,7 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
     if challenge:
         fb["suggested_outline"] = []  # hard guarantee: Challenge Mode never hands over an answer
 
-    rv = review_mod.local_review(text, mode, spec, m, scores, FRAMEWORK_CUES, history)
+    rv = review_mod.local_review(text, mode, spec, m, scores, FRAMEWORK_CUES, history, prompt)
     rv = review_mod.merge_llm_review(rv, llm_review, challenge, mode)
     rv = evidence.validate_review(rv, text, words, challenge)   # quotes must be in the transcript
     focus = evidence.focus(rv, fb, tuple(spec["target_seconds"]))

@@ -37,7 +37,14 @@ def filler_breakdown(text: str) -> dict:
     toks = tokens(text)
     c = Counter()
     for i, t in enumerate(toks):
-        if t in SINGLE_FILLERS:
+        # Recognizers spell prolonged hesitations differently ("ummm", "uhhh", "uhm").
+        hesitation = next((name for pattern, name in (
+            (r"u+m+", "um"), (r"u+h+m+", "um"), (r"u+h+", "uh"),
+            (r"e+r+m*", "er"), (r"a+h+", "ah"), (r"h+m+", "hmm"),
+        ) if re.fullmatch(pattern, t)), None)
+        if hesitation:
+            c[hesitation] += 1
+        elif t in SINGLE_FILLERS:
             c[t] += 1
         elif t == "like":
             prev = toks[i - 1] if i else ""
@@ -72,8 +79,12 @@ def vague_breakdown(text: str) -> dict:
     return dict(c.most_common())
 
 
+# A sentence ends at . ! ? — but not at "a.m." / "p.m." ("I woke up at 9 a.m. and came down" is one sentence).
+SENT_SPLIT = re.compile(r"(?<=[.!?])(?<!\b[AaPp]\.[Mm]\.)\s+")
+
+
 def sentences(text: str) -> list[str]:
-    parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", (text or "").strip()) if s.strip()]
+    parts = [s.strip() for s in SENT_SPLIT.split((text or "").strip()) if s.strip()]
     return parts
 
 
@@ -83,7 +94,7 @@ def compute(text: str, duration_seconds: float | None = None) -> dict:
     fillers = filler_breakdown(text)
     filler_total = sum(fillers.values())
     sents = sentences(text)
-    punctuated = len(sents) > 1 or bool(re.search(r"[.!?]\s*$", text or ""))
+    punctuated = len(sents) > 1 or bool(re.search(r"(?<!\b[AaPp]\.[Mm]\.)[.!?]\s*$", text or ""))
     est_seconds = round(wc / 2.3) if wc else 0  # ~140 wpm conversational
     seconds = duration_seconds if duration_seconds and duration_seconds > 3 else est_seconds
     wpm = round(wc / (seconds / 60)) if seconds else 0
@@ -92,6 +103,8 @@ def compute(text: str, duration_seconds: float | None = None) -> dict:
     return {
         "word_count": wc,
         "filler_count": filler_total,
+        "filler_note": "Counted from the transcript, not directly from the audio. Recognition may omit fillers; "
+                       "words such as 'like' or 'actually' can also have a useful meaning in context.",
         "fillers": fillers,
         "filler_rate": round(100 * filler_total / wc, 1) if wc else 0.0,  # per 100 words
         "hedge_count": hedge_count(text),

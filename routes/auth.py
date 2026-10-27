@@ -47,6 +47,10 @@ def signup(req: SignupRequest, request: Request, response: Response, c: Context 
         raise HTTPException(400, err)
     if c.store.user_by_email(email):
         raise HTTPException(409, "An account with this email already exists. Sign in instead.")
+    cap = auth.beta()["max_users"]
+    if cap and c.store.user_count() >= cap:
+        raise HTTPException(403, "The free beta is full right now. Please try again in a few days — "
+                                 "we're opening more spots as we go.")
     try:
         user = c.store.create_user(email, auth.hash_password(req.password), (req.name or "").strip() or None)
     except sqlite3.IntegrityError:   # two sign-ups for the same email at the same moment

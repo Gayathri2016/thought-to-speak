@@ -71,7 +71,10 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 - **Mentor:** your pattern across recent takes, what's improving, and one habit for the week.
 
 **Practice**
-- Five scenarios — Interview, Leadership, Technical explanation, Toastmasters, FDE / Customer — or your own prompt.
+- Everyday practice first: **Everyday Conversation, Tell a Story, Share an Opinion, Difficult Conversations** —
+  24 prompts about introductions, hobbies, daily experiences, preferences, requests and disagreements.
+  Interview, Leadership, Technical Explanation and Toastmasters remain under **Work & presentations**.
+  You can also use your own topic. Everyday scenarios have their own rubrics, listener feedback and shorter targets.
 - Scores for **structure, clarity, relevance, answer quality and delivery**, plus a framework check.
 - **Retry loop:** retries are chained to the same prompt and compared take by take.
 - **Challenge Mode:** Socratic questions and a hint only; the server strips any outline or rewrite.
@@ -86,7 +89,7 @@ in Challenge Mode it coaches with questions and never writes your answer for you
 | Pace overall, while talking, and every 10 s | speaking window + Whisper word timestamps |
 | **Pitch variety** (monotone / limited / expressive) | autocorrelation F0 tracking (75–400 Hz), range in semitones |
 | Volume consistency and **trailing off** | speech-frame dB, last 15 % vs. the body |
-| Fillers that speech-to-text usually deletes | Whisper with a disfluent prompt so "um / uh" are kept |
+| Fillers captured in the transcript | Whisper is prompted to retain "um / uh"; recognizers can still omit them. Prolonged spellings such as "ummm" and "uhhh" are counted. |
 | Unclear words in free speech | local Whisper per-word confidence (< 50 %) |
 
 **Progress** — score trend, skills last-10 vs. previous-10, average gain from retrying, streak,
@@ -256,6 +259,12 @@ API: `POST /api/jobs` (JSON) or `POST /api/jobs/audio` (multipart) with an `Idem
 with the job; poll `GET /api/jobs/{id}`; `GET /api/jobs?active=true`; `GET /api/usage`. The older
 `POST /api/analyze` and `/api/analyze-audio` still work and wait for the result.
 
+## Free public beta hosting
+
+The beta runs for $0 on an Oracle Cloud "Always Free" server, with HTTPS from Caddy and a free DuckDNS address.
+The [hosting runbook](docs/DEPLOY_BETA.md) covers why this host was chosen, launch steps, updates and rollback,
+backups, and risks. The server kit is in [`deploy/oracle/`](deploy/oracle/): one command sets it up.
+
 ## Tests
 
 ```bash
@@ -264,6 +273,12 @@ pytest -q          # includes the browser take-controller tests (node --test tes
 ```
 
 ## Limitations
+
+- **Transcripts are drafts, not exact records.** Browser recognition and Whisper may change words or omit
+  fillers, repetitions and false starts. Analyze waits for the browser's final results after Stop (with a bounded
+  timeout); it never counts unconfirmed preview text. When recording transcription differs, the live draft remains
+  available for comparison. Play the recording to check the words. Filler counts describe the transcript, not an
+  independent acoustic filler detector; zero detected fillers does not prove filler-free speech.
 
 - Pitch tracking and pause detection are signal-processing heuristics, not trained models; background noise
   lowers accuracy (the app warns when the recording is quiet or noisy).

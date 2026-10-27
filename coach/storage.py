@@ -353,6 +353,10 @@ class Store:
             r = c.execute("SELECT id, email, name, created_at FROM users WHERE id=?", (user_id,)).fetchone()
         return dict(r) if r else None
 
+    def user_count(self) -> int:
+        with self._conn() as c:
+            return c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
     def user_by_email(self, email: str) -> dict | None:
         with self._conn() as c:
             r = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()

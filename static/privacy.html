@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy · Thought → Speak</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+  .policy { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+  .policy h1 { font: 800 30px/1.15 var(--display); letter-spacing: -.02em; margin: 18px 0 6px; }
+  .policy h2 { font: 750 18px var(--display); margin: 28px 0 6px; }
+  .policy p, .policy li { font-size: 15.5px; line-height: 1.6; color: var(--ink-2); }
+  .policy ul { padding-left: 20px; }
+  .policy .note { background: var(--sun-soft); border-radius: 12px; padding: 12px 14px; color: var(--ink); }
+  .policy a { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+<main class="policy">
+  <a href="/" class="auth-brand" style="text-decoration:none;color:inherit">
+    <span class="logo" aria-hidden="true"><span class="logo-wave"><i></i><i></i><i></i><i></i></span></span>Thought → Speak</a>
+  <h1>Privacy</h1>
+  <p>Last updated October 2026 · free public beta</p>
+
+  <p class="note">Thought → Speak is a free beta. Features may change, and if we ever have to reset the
+    database we'll say so on the site first and give you time to export your history.</p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li>Your email address, and your name if you give one.</li>
+    <li>Your password — only as a salted scrypt hash. We never store or see the password itself.</li>
+    <li>What you practise: your transcripts, the recordings you choose to save, your scores and coaching, and
+      your lesson and streak progress.</li>
+    <li>One sign-in cookie, so you stay signed in. No advertising cookies, no trackers, no analytics.</li>
+  </ul>
+
+  <h2>Where your words go</h2>
+  <ul>
+    <li><b>Live transcript.</b> The words that appear while you speak come from your browser's speech
+      recognition. In Chrome and Edge that audio is processed by Google's or Microsoft's speech service, under
+      their privacy policies. If you'd rather not use it, type or paste your answer instead.</li>
+    <li><b>Coaching.</b> In this beta, your answers are scored and coached by the built-in coach on our own
+      server. No AI service receives your transcripts or recordings. If that ever changes, we'll update this
+      page before it does.</li>
+  </ul>
+
+  <h2>Who can see it</h2>
+  <p>Only you, when you're signed in. Every take, transcript and recording belongs to your account and isn't
+    shown to other users. The site's owner can technically reach the server to keep it running and to make
+    backups, and doesn't look at people's practice. We don't sell or share your data.</p>
+
+  <h2>Keeping and deleting</h2>
+  <ul>
+    <li>Delete a single take from <b>History</b> — its transcript, recording and scores go with it.</li>
+    <li>Download everything as a file with <b>History → Export</b>.</li>
+    <li>Delete your account under <b>History → Delete account</b>. That removes your account and everything in it.
+      Nightly backups are kept for 7 days, so a deleted account is gone from backups within a week.</li>
+  </ul>
+
+  <h2>Age</h2>
+  <p>Thought → Speak is for people aged 13 and over.</p>
+
+  <h2>Questions</h2>
+  <p>Ask through the <a id="fb" href="https://github.com/Gayathri2016/thought-to-speak/issues">feedback page</a><span id="mail"></span>.</p>
+</main>
+<script type="module" src="/static/js/privacy.js"></script>
+</body>
+</html>

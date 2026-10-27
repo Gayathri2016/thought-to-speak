@@ -30,7 +30,8 @@ def config():
     p = llm.active_provider()
     return {"provider": p, "model": llm.model_name(p), "modes": public_modes(),
             "dimensions": analysis.DIMENSION_LABELS, "transcriber": transcribe.available(),
-            "auth_mode": auth.mode(), "daily_take_limit": auth.daily_limit()}
+            "auth_mode": auth.mode(), "daily_take_limit": auth.daily_limit(),
+            "beta": {k: v for k, v in auth.beta().items() if k != "max_users"}}
 
 
 @router.get("/api/prompt")
