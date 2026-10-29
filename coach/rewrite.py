@@ -230,6 +230,55 @@ def _join(a: str, b: str) -> str:
 
 
 # ------------------------------------------------------------------------------------------- the whole answer
+# ------------------------------------------------------------------------------------------- parts of the answer
+ANSWER_FIRST = {"Bottom line", "Point", "Decision / Ask"}   # opening parts that ARE the answer
+_Q_WORDS = {"what", "what's", "whats", "which", "who", "how", "why", "when", "where", "do", "does", "did", "is",
+            "are", "can", "could", "would", "should", "your", "you", "tell", "me", "about", "us", "one", "most"}
+
+
+def _content(text: str) -> set[str]:
+    return {w for w in (_key(x) for x in (text or "").split())
+            if len(w) > 2 and w not in _STOP and w not in _Q_WORDS and w not in LEAD_TRIM}
+
+
+def echoes_prompt(sentence: str, prompt: str) -> bool:
+    """'The biggest risk on my project is…' answers 'What's the biggest risk on your project?' head-on."""
+    pw = _content(prompt)
+    if not pw:
+        return False
+    head = " ".join((sentence or "").split()[:10])     # the answer comes first, not somewhere in the middle
+    return len(pw & _content(head)) >= min(2, len(pw))
+
+
+def _substantive(s: str) -> bool:
+    return len([w for w in s.split() if _key(w) not in _STOP and _key(w) not in LEAD_TRIM]) >= 3
+
+
+def part_positions(sents: list[str], labels: list[str], cues: dict, prompt: str = "") -> dict:
+    """Which sentence does each framework part? {label: sentence index}. One matcher for the score, the
+    part-by-part review and the rewrite, so they can't disagree."""
+    found = {}
+    for lab in labels:
+        for i, s in enumerate(sents):
+            if any(c in " " + s.lower() + " " for c in cues.get(lab, [])):
+                found[lab] = i
+                break
+    if labels and labels[0] in ANSWER_FIRST and labels[0] not in found and sents \
+            and echoes_prompt(sents[0], prompt) and 0 not in found.values():
+        found[labels[0]] = 0
+    if len(labels) == 3 and labels[1] not in found and labels[0] in found:      # one middle part: the support
+        start = found[labels[0]]
+        for i in range(start + 1, len(sents)):
+            if i not in found.values() and _substantive(sents[i]) \
+                    and (labels[2] not in found or i < found[labels[2]]):
+                found[labels[1]] = i
+                break
+    return found
+
+
+LONG_SENTENCE = 28   # words; past this a spoken sentence is hard to follow
+
+
 def corrected(text: str, mode: str = "") -> dict:
     """Line by line: every sentence as said, how to say it, and why. Plus the whole answer, corrected in order."""
     raw = _raw_sentences(text)
@@ -269,6 +318,11 @@ def corrected(text: str, mode: str = "") -> dict:
     full = " ".join(s["better"] for s in sents)
     items = []
     for s in sents:
+        n = len(s["better"].split())
+        if n > LONG_SENTENCE:                         # no rule fired, but nobody can follow 34 words in one breath
+            s["why"] = s["why"] + [f"This sentence runs {n} words. Say it as two or three shorter sentences — "
+                                   "one idea each. If a word looks wrong, the browser may have misheard it: "
+                                   "fix it in the transcript box and get feedback again."]
         if C._same(s["said"], s["better"]) and not s["why"]:
             continue
         why = list(dict.fromkeys(s["why"]))
@@ -280,7 +334,7 @@ def corrected(text: str, mode: str = "") -> dict:
             items.append({"original": ln["said"], "corrected": None, "changes": ln["why"], "notes": []})
     def weight(item):                                 # the fixes that teach the most come first
         why = " ".join(item["changes"])
-        return (-1 if "Grammar" in why else 0 if re.search(r"false start|hedge|sign-off|repeated", why) else
+        return (-1 if "Grammar" in why else 0 if re.search(r"false start|hedge|sign-off|repeated|shorter sentences", why) else
                 1 if "filler" in why else 2 if "chaining" in why else 3)
     order = {id(x): i for i, x in enumerate(items)}
     top = sorted(items, key=lambda x: (weight(x), order[id(x)]))[:6]   # the six that teach the most…
@@ -452,6 +506,8 @@ def script(text: str, mode: str, spec: dict, cues: dict, prompt: str = "", fixed
         is_mid = lab in middle
         mine = [i for i, s in enumerate(sents) if i not in used and
                 any(c in " " + s.lower() + " " for c in cues.get(lab, []))]
+        if idx == 0 and not mine and lab in ANSWER_FIRST and sents and echoes_prompt(sents[0], prompt):
+            mine = [0]
         if is_mid and len(middle) == 1:               # one middle part (Detail): everything they said, in order
             mine = [i for i in range(len(sents)) if i not in used and not _belongs_elsewhere(sents[i], labels, lab, cues)]
         if is_mid and len(mine) > MAX_MIDDLE:         # long answers: keep the most informative, in order

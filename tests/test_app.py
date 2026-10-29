@@ -2359,3 +2359,41 @@ def test_mentor_keeps_time_lead_in_and_fixes_it_were():
     assert r["full"] == "Last weekend we went to the beach. My brother swam a lot. It was fun."
     from coach import grammar
     assert grammar.fix("if it were me I would go")[0].startswith("If it were")       # subjunctive is right
+
+
+def test_bluf_answer_that_echoes_the_question_is_the_bottom_line_everywhere():
+    """A take that opens by restating the question IS the bottom line: the score, the part-by-part review and
+    'Say it like this' must agree, and a long unpunctuated take never gets 'no corrections needed'."""
+    from pathlib import Path
+    from coach import analysis
+    from coach.curriculum import Curriculum
+    take = ("the biggest risk on our launch wants to get everything done in two weeks with a small team and new "
+            "tools that nobody has used before for building testing and shipping the app to all of our customers "
+            "you will see a better results by multi-testing multiple builds and checking them again")
+    cur = Curriculum(Path(__file__).parent.parent / "content" / "journeys")
+    les = cur.get("ss02")
+    r = analysis.analyze(take, les["exercise"]["mode"], "What's the biggest risk on your project?", False, 30,
+                         cur.spec(les))
+    status = {x["label"]: x["status"] for x in r["structure_map"]}
+    parts = {p["label"]: p["status"] for p in r["review"]["breakdown"]["parts"]}
+    script = {p["label"]: p.get("yours") for p in r["review"]["coach"]["script"]}
+    assert status == parts == {"Bottom line": "present", "Context": "present", "Next step": "missing"}
+    assert script == {"Bottom line": True, "Context": True, "Next step": False}
+    changes = " ".join(c for it in r["review"]["corrections"]["items"] for c in it["changes"])
+    assert "is that we have to" in changes and "a better result" in changes and "testing multiple" in changes
+    assert "shorter sentences" in changes                                    # 34 words in one breath
+    # a question it doesn't echo still needs a real bottom line
+    other = analysis.framework_map(take, ["Bottom line", "Context", "Next step"], "How was your weekend?")
+    assert other[0]["status"] == "missing"
+
+
+def test_new_grammar_rules_and_their_exceptions():
+    from coach import grammar
+    fix = lambda s: grammar.fix(s)[0]  # noqa: E731
+    assert fix("we got a great ideas from them") == "We got a great idea from them"
+    assert fix("a lot of results came in") == "A lot of results came in"            # quantity words stay
+    assert fix("a few results were wrong") == "A few results were wrong"
+    assert fix("the biggest risk on the launch wants to finish in a week") == \
+        "The biggest risk on the launch is that we have to finish in a week"
+    assert fix("my manager wants to ship it friday").startswith("My manager wants to")  # people can want things
+    assert fix("multi-checking multiple files") == "Checking multiple files"

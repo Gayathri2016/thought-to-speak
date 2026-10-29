@@ -169,12 +169,15 @@ def mode_spec(mode: str) -> dict:
             "target_seconds": tuple(r["target_seconds"])}
 
 
-def framework_map(text: str, labels: list[str]) -> list[dict]:
+def framework_map(text: str, labels: list[str], prompt: str = "") -> list[dict]:
     low = " " + (text or "").lower() + " "
+    pos = rewrite.part_positions(review_mod.split_sentences(text), labels, FRAMEWORK_CUES, prompt)
     out = []
     for label in labels:
         hits = [c for c in FRAMEWORK_CUES.get(label, []) if c in low]
-        status = "present" if hits else "missing"
+        status = "present" if hits or label in pos else "missing"
+        if not hits and label in pos:
+            hits = ["answers the question first"] if label == (labels[0] if labels else None) else ["supporting detail"]
         note = {
             "present": f"Detected ({', '.join(h.strip() for h in hits[:2])}).",
             "weak": "Only a faint signal — make this part explicit.",
@@ -186,7 +189,7 @@ def framework_map(text: str, labels: list[str]) -> list[dict]:
 
 def heuristic_scores(text: str, mode: str, prompt: str, m: dict, spec: dict) -> dict:
     wc = m["word_count"]
-    fmap = framework_map(text, spec["framework"])
+    fmap = framework_map(text, spec["framework"], prompt)
     coverage = sum({"present": 1, "weak": 0.5, "missing": 0}[f["status"]] for f in fmap) / len(fmap)
 
     structure = 45 + coverage * 35 + min(4, len(m["transitions"])) * 4

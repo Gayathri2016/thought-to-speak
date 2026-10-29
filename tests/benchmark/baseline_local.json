@@ -1,5 +1,5 @@
 {
- "heuristic_version": "h10",
+ "heuristic_version": "h11",
  "cases": {
   "int-disagree-strong": {
    "overall": 79,
@@ -62,9 +62,9 @@
    }
   },
   "lead-update-weak": {
-   "overall": 47,
+   "overall": 49,
    "scores": {
-    "structure": 35,
+    "structure": 44,
     "clarity": 58,
     "relevance": 65,
     "answer_quality": 28,

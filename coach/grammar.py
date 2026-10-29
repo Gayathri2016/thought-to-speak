@@ -116,6 +116,13 @@ AFTER_NOUN = {"of", "and", "ago", "later", "in", "at", "on", "with", "to", "befo
               "you", "it", "my", "our", "is", "was", "are", "were", "already", "too", "again", "back", "left"}
 NUMBERS = {"two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "many", "several", "few",
            "twenty", "thirty", "hundred"}
+# nouns people often say as "a … results" — singular form; the rule adds the plural
+A_PLURAL_NOUNS = {"result", "answer", "problem", "issue", "idea", "step", "prompt", "tool", "task", "change",
+                  "question", "reason", "example", "benefit", "test", "bug", "feature", "risk", "goal", "option",
+                  "user", "customer", "project", "meeting", "outcome", "solution", "improvement", "decision",
+                  "requirement", "deadline", "update", "report", "product", "service", "skill", "experience"}
+QUANTITY = {"few", "lot", "lots", "couple", "number", "series", "pair", "bunch", "set", "group", "list", "range",
+            "variety", "kind", "sort", "type", "total", "majority", "handful", "dozen", "hundred", "thousand"}
 PLURAL_IRR = {"child": "children", "person": "people", "man": "men", "woman": "women"}
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february",
         "march", "april", "june", "july", "august", "september", "october", "november", "december", "english",
@@ -152,6 +159,9 @@ RULES_TEXT = {
     "present_perfect": "with a finished time (“last week”), use the simple past",
     "agreement_plural": "with I / we / you / they (or people), the verb has no -s",
     "be": "match “be” to the subject: I am, he is, they are (I was, they were)",
+    "a_plural": "“a / an” means one — say “a result”, or “results” with no “a”",
+    "redundant": "“multi-” and “multiple” say the same thing twice — keep one",
+    "thing_wants": "a risk or a problem can't “want” anything — say what it is: “the risk is that …”",
 }
 
 KIND = {"tense": "tense", "tense_chain": "tense", "present_perfect": "tense", "agreement_s": "agreement",
@@ -159,7 +169,10 @@ KIND = {"tense": "tense", "tense_chain": "tense", "present_perfect": "tense", "a
         "to_inf": "verb form", "no_to": "verb form", "agree": "verb form", "participle": "verb form",
         "gerund": "verb form", "agreement_plural": "agreement", "be": "agreement", "me_and": "pronouns", "double_subject": "pronouns", "uncount": "nouns",
         "much": "nouns", "plural": "nouns", "explain_to": "word choice", "tell": "word choice",
-        "about": "word choice", "home": "word choice", "comparative": "word choice", "capital": "capitals"}
+        "about": "word choice", "home": "word choice", "comparative": "word choice", "capital": "capitals",
+        "a_plural": "nouns", "redundant": "word choice", "thing_wants": "word choice"}
+
+NOT_IN_LESSON = {"a_plural", "redundant", "thing_wants"}   # the kind's lesson doesn't cover these: teach the rule
 
 LESSONS = {
     "tense": "When you talk about yesterday or last weekend, put every verb in the past: went, had, played.",
@@ -194,7 +207,7 @@ class _Fixer:
         self.changes = []
 
     def note(self, before: str, after: str, key: str):
-        self.changes.append({"from": before, "to": after, "rule": RULES_TEXT[key], "kind": KIND[key]})
+        self.changes.append({"from": before, "to": after, "rule": RULES_TEXT[key], "kind": KIND[key], "key": key})
 
     def set(self, i: int, new: str, key: str, before: str | None = None):
         old = self.w[i]
@@ -385,11 +398,19 @@ def _phrases(f: _Fixer):
         (r"\b(discuss|discussed|discusses|mention|mentioned|describe|described)\s+about\b", lambda m: m.group(1), "about"),
         (r"\b(go|goes|went|come|comes|came|get|got|going|coming)\s+to\s+home\b", lambda m: f"{m.group(1)} home", "home"),
         (r"\bmore\s+(" + "|".join(SHORT_ADJ) + r")\b", lambda m: SHORT_ADJ[m.group(1).lower()], "comparative"),
+        (r"\b(a|an)\s+((?:[a-z]+\s+)?)(" + "|".join(A_PLURAL_NOUNS) + r")s\b",
+         lambda m: None if (m.group(2).strip().lower() in QUANTITY or m.group(2).strip().lower() in A_PLURAL_NOUNS)
+         else f"{m.group(1)} {m.group(2)}{m.group(3)}", "a_plural"),
+        (r"\bmulti-?([a-z]+ing)\s+multiple\b", lambda m: f"{m.group(1)} multiple", "redundant"),
+        (r"\b(risk|problem|challenge|issue|concern)((?:\s+[a-z]+){0,3}?)\s+wants\s+to\b",
+         lambda m: f"{m.group(1)}{m.group(2)} is that we have to", "thing_wants"),
     ]
     for pattern, rep, key in subs:
         m = re.search(pattern, s, re.I)
         if m:
             new = rep(m)
+            if new is None:                           # matched, but an exception ("a lot of results")
+                continue
             f.note(m.group(0).lower(), new, key)
             s = s[:m.start()] + new + s[m.end():]
     for d in DAYS:
@@ -438,6 +459,9 @@ def patterns(all_changes: list[dict], examples: list[tuple[str, str]] | None = N
         by_kind.setdefault(c["kind"], []).append(c)
     out = []
     for kind, cs in sorted(by_kind.items(), key=lambda kv: -len(kv[1])):
-        out.append({"kind": kind, "count": len(cs), "lesson": LESSONS.get(kind, ""),
+        extra = list(dict.fromkeys(c["rule"] for c in cs if c.get("key") in NOT_IN_LESSON))
+        lesson = (extra[0][0].upper() + extra[0][1:] + ".") if extra and len(extra) == len(
+            {c.get("key") for c in cs}) else LESSONS.get(kind, "")
+        out.append({"kind": kind, "count": len(cs), "lesson": lesson,
                     "examples": [f"{c['from']} → {c['to']}" for c in cs[:3]]})
     return out[:limit]

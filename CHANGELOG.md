@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — the coach reads answer-first takes correctly
+
+- **Bottom line by echo.** An answer that opens by restating the question ("The biggest risk on my project is…")
+  now counts as the Bottom line (also Point and Decision / Ask). The score, "Your answer, part by part" and
+  "Say it like this" share one matcher, so a part can no longer be "missing" in one place and filled with your
+  words in another. In a three-part framework, the next real sentence after the opening counts as the middle part.
+- **Grammar the mentor now catches:** "a tangible results" → "a tangible result"; "multi-applying multiple" →
+  "applying multiple"; "the risk … wants to" → "the risk … is that we have to". Lessons name the specific rule.
+- **No more "came through clean" for a 40-word sentence.** Any sentence over 28 words gets a line-by-line note
+  to split it, with a reminder to fix words the browser misheard.
+- Scorer version h11; benchmark baseline refreshed (one intended change: the weak leadership update now gets
+  credit for opening with its status).
+
 ## Unreleased — try it before signing up
 
 - **Guest mode.** "Try it now — no account needed" on the welcome screen starts a guest session: up to 3 takes a

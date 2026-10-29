@@ -121,15 +121,10 @@ def _warmup(s: str) -> bool:
 
 
 # ----------------------------------------------------------------------------------------------- breakdown
-def breakdown(sents: list[str], labels: list[str], cues: dict) -> dict:
+def breakdown(sents: list[str], labels: list[str], cues: dict, prompt: str = "") -> dict:
     """Which of the speaker's sentences does each framework part? Returns parts in framework order plus a note
     when the parts came out of order (e.g. the result before the situation)."""
-    found = {}
-    for lab in labels:
-        for i, s in enumerate(sents):
-            if any(c in " " + s.lower() + " " for c in cues.get(lab, [])):
-                found[lab] = i
-                break
+    found = rewrite.part_positions(sents, labels, cues, prompt)
     parts = [{"label": lab, "status": "present" if lab in found else "missing",
               "quote": _short(sents[found[lab]]) if lab in found else None,
               "position": found.get(lab)} for lab in labels]
@@ -424,7 +419,7 @@ def local_review(text: str, mode: str, spec: dict, m: dict, scores: dict, cues: 
                  history: list[dict] | None = None, prompt: str = "") -> dict:
     sents = split_sentences(text)
     labels = list(spec.get("framework") or [])
-    bd = breakdown(sents, labels, cues)
+    bd = breakdown(sents, labels, cues, prompt)
     current = {"overall": round(sum(scores.values()) / len(scores)), **scores, "analysis": {"structure_map": bd["parts"], "metrics": m}}
     digest = history_digest((history or []) + [current])    # the mentor sees this take too
     rw = rewrite.mentor_rewrite(text, mode, spec, cues, prompt)
