@@ -507,9 +507,16 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
             dr = co.get("drill")
             if isinstance(dr, dict) and dr.get("title") and isinstance(dr.get("steps"), list):
                 r["coach"]["drill"] = {"title": str(dr["title"]), "steps": [str(s) for s in dr["steps"]][:4]}
+            script = [{"label": str(x.get("label") or "").strip(), "text": str(x.get("text") or "").strip(),
+                       "yours": x.get("yours") is not False}
+                      for x in co.get("script") or [] if isinstance(x, dict)]
+            script = [x for x in script if x["label"] and x["text"]]
             if isinstance(co.get("stronger_version"), str) and co["stronger_version"].strip():
                 r["coach"]["stronger_version"] = co["stronger_version"].strip()
                 r["coach"]["script"] = None            # the AI's version replaces the built-in, part-labelled one
+            if script and not challenge:               # …and the AI's own part labels, when it gives them
+                r["coach"]["script"] = script
+                r["coach"]["stronger_version"] = " ".join(x["text"] for x in script)
         cr = data.get("corrections")
         if isinstance(cr, dict) and isinstance(cr.get("items"), list):
             items = []

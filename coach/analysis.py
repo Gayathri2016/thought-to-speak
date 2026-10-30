@@ -316,8 +316,10 @@ def heuristic_feedback(mode: str, m: dict, scores: dict, fmap: list[dict], chall
 
 SYSTEM_PROMPT = """You are Thought → Speak, a communication coach for spontaneous spoken answers.
 Your job is to make the speaker independent of AI, so you diagnose and coach; you do not perform for them.
-The transcript comes from browser speech-to-text: ignore missing punctuation and capitalization,
-and do not penalize obvious recognition errors.
+The transcript comes from speech-to-text: ignore missing punctuation and capitalization, and do not penalize
+obvious recognition errors. When a word is clearly a mishearing and the intended word is obvious from context
+(e.g. "music catalyst" where "AI is a catalyst" fits), use the intended word in corrected text, stronger_version
+and script — never quote the mishearing as the speaker's mistake.
 
 Return ONLY a JSON object with exactly these keys:
 {
@@ -353,7 +355,8 @@ Return ONLY a JSON object with exactly these keys:
       "fixes": [{"quote": str|null, "problem": str, "fix": str}],  // top 3, highest impact first
       "do_next": [str],             // 2-3 imperative instructions for the very next take
       "drill": {"title": str, "steps": [str]},   // one 2-4 minute drill for the biggest weakness
-      "stronger_version": str       // see rules; "" in challenge_mode
+      "stronger_version": str,      // see rules; "" in challenge_mode
+      "script": [{"label": str, "text": str, "yours": bool}]   // stronger_version split into the framework parts
     },
     "mentor": {
       "pattern": str|null,          // the recurring pattern across recent takes (null if no history)
@@ -397,6 +400,10 @@ REVIEW rules — the review is the heart of the feedback:
   stronger_version: when challenge_mode is false, rewrite THEIR answer at its best — keep their facts, story
   and voice, invent nothing, about the target length. When challenge_mode is true, return "" and give no
   sample wording anywhere.
+  script: the same stronger_version, one entry per framework label, in framework order, each 1-3 short
+  spoken sentences. "yours": true when the line is built from what they said; false when the part was missing
+  and you suggest a line for it — a suggestion grounded in their situation (e.g. a sensible next step), never a
+  made-up fact, number or past event. Aim for the target length when spoken. [] in challenge_mode.
 - mentor: you are their long-term mentor. Use the recent-history summary to name the pattern, what is genuinely
   improving, and one habit for this week. If there is no history, set pattern and improving to null."""
 
@@ -582,7 +589,8 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
             for d in scoring.CONTENT_DIMS:      # discard any partial AI scores from a failed merge
                 scores[d] = h["scores"][d]
             dim_sources = {d: "heuristic" for d in scoring.CONTENT_DIMS}
-            warning = f"AI provider failed ({type(e).__name__}); showing local analysis."
+            warning = str(e) if isinstance(e, llm.LLMUnavailable) else \
+                f"AI provider failed ({type(e).__name__}); showing local analysis."
 
     if voice:  # measured voice feedback always comes from the audio, not the LLM
         vgood, vfix = audio_mod.feedback(voice, voice_scores)

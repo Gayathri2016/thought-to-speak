@@ -39,9 +39,15 @@
     <li><b>Live transcript.</b> The words that appear while you speak come from your browser's speech
       recognition. In Chrome and Edge that audio is processed by Google's or Microsoft's speech service, under
       their privacy policies. If you'd rather not use it, type or paste your answer instead.</li>
-    <li><b>Coaching.</b> In this beta, your answers are scored and coached by the built-in coach on our own
-      server. No AI service receives your transcripts or recordings. If that ever changes, we'll update this
-      page before it does.</li>
+    <li id="coachAI"><b>AI coaching.</b> To write your corrected answer and coaching, your transcript is sent to
+      <a href="https://groq.com/privacy">Groq</a>, which runs Meta's open Llama models. When you record with the mic,
+      the recording is also sent to Groq to be transcribed (more accurately than the browser). Groq doesn't keep
+      these by default; it may log them for up to 30 days only to investigate errors or abuse
+      (<a href="https://console.groq.com/docs/your-data">Groq's data policy</a>). No name or email is sent with them.
+      If AI coaching is busy or its free daily limit is reached, the built-in coach on our own server takes over and
+      nothing leaves the server.</li>
+    <li id="coachLocal" hidden><b>Coaching.</b> Right now your answers are scored and coached by the built-in coach on
+      our own server. No AI service receives your transcripts or recordings.</li>
   </ul>
 
   <h2>Who can see it</h2>

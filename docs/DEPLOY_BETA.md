@@ -12,8 +12,8 @@ day, and the risks. Total cost: **$0 a month.**
                                                └─ disk: SQLite database + recordings, backed up nightly
 ```
 
-- **Coaching:** the built-in coach only (`LLM_PROVIDER=local`). No AI or Whisper API keys are on the server, so
-  nothing can run up a bill.
+- **Coaching:** the built-in coach by default (`LLM_PROVIDER=local`). Optional free AI coaching through Groq
+  (step 9) — a free-tier key with no card on file can't run up a bill.
 - **Speech-to-text:** the visitor's browser (Chrome / Edge work best; on Firefox, people type).
 - **Beta guard-rails:** at most 200 accounts (`BETA_MAX_USERS`) and 30 analyzed takes per person per day.
 
@@ -123,6 +123,29 @@ sudo nano /etc/thought-to-speak/env      # e.g. CONTACT_EMAIL=you@example.com, B
 sudo systemctl restart thought-to-speak
 ```
 
+### 9. Optional: free AI coaching (Groq, Meta Llama)
+
+The built-in coach fixes grammar by rules. For a rewrite that understands what you meant — and for accurate
+transcripts of mic recordings — turn on Groq's free tier, which runs Meta's Llama 4 Scout and Whisper:
+
+1. Sign up at console.groq.com and create an API key. Treat it like a password: never paste it in chat or commit it.
+2. Optional but wise: in Groq's **Data Controls**, turn on **Zero Data Retention**.
+3. On the server:
+
+   ```bash
+   sudo nano /etc/thought-to-speak/env
+   #   GROQ_API_KEY=<your key>
+   #   LLM_PROVIDER=auto
+   #   TRANSCRIBE_PROVIDER=auto
+   sudo systemctl restart thought-to-speak
+   ```
+
+The badge in the app changes to **AI coach**, and the Privacy page switches to the wording that says transcripts
+and recordings go to Groq. Free-tier limits (roughly 1,000 requests and 500k tokens a day for Llama 4 Scout,
+2,000 transcriptions a day) are protected by `AI_DAILY_TAKES` (300) and `TRANSCRIBE_DAILY` (500): past them, or
+whenever Groq says "rate limited", the built-in coach and the browser transcript take over automatically. To turn
+it off, empty `GROQ_API_KEY` and restart.
+
 ## Running it
 
 | Task | Command (on the server unless noted) |
@@ -165,8 +188,8 @@ On a brand-new server, run `setup.sh` first, then copy your backup folder up wit
   users type. There is no server-side Whisper on the free plan.
 - **Free means limits:** 200 accounts and 30 takes per person per day by default. Raise them in the settings file
   once you see how the server copes (`htop` while testers are active).
-- **Privacy promises are on `/privacy`.** If you ever turn on an AI provider, update that page first — it currently
-  says no AI service receives users' words.
+- **Privacy promises are on `/privacy`.** It switches its wording automatically when Groq is on. If you add a
+  different AI provider (OpenAI, Anthropic), update that page first — it names Groq.
 
 ## When to leave the free plan
 

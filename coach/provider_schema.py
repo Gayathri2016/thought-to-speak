@@ -54,11 +54,18 @@ class Drill(_M):
     steps: list[str] = Field(min_length=1, max_length=6)
 
 
+class ScriptPart(_M):
+    label: str = Field(max_length=60)
+    text: str = Field(max_length=L)
+    yours: bool = True
+
+
 class Coach(_M):
     fixes: list[Fix] = []
     do_next: list[str] = []
     drill: Drill | None = None
     stronger_version: str | None = Field(None, max_length=L)
+    script: list[ScriptPart] = []
 
 
 class CorrectionItem(_M):
@@ -220,7 +227,7 @@ def validate_feedback(data) -> tuple[dict, list[str]]:
     for key, limit in (("landed", 3), ("doubts", 3), ("to_strong_yes", 2)):
         if key in (rv.get("evaluator") or {}):
             rv["evaluator"][key] = rv["evaluator"][key][:limit]
-    for key, limit in (("fixes", 3), ("do_next", 3)):
+    for key, limit in (("fixes", 3), ("do_next", 3), ("script", 6)):
         if key in (rv.get("coach") or {}):
             rv["coach"][key] = rv["coach"][key][:limit]
     return clean, problems

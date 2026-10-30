@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — free AI coaching with Meta Llama (Groq)
+
+- **New provider: Groq**, free tier, Meta's Llama 4 Scout by default (`GROQ_API_KEY`, `GROQ_MODEL`). It writes
+  "Say it like this" as labelled framework parts — e.g. *Bottom line / Context / Next step* — with "from your
+  words" or "suggested" on each line and an estimated speaking time ("about 25 seconds").
+- **Groq Whisper** transcribes mic recordings with the same key, so misheard words ("music catalyst") are fixed
+  before coaching. The AI is also told to read through obvious mishearings instead of quoting them as mistakes.
+- **Never stuck on a free tier:** daily caps (`AI_DAILY_TAKES`=300, `TRANSCRIBE_DAILY`=500) and a one-minute pause
+  after a "rate limited" reply; either way the built-in coach / browser transcript take over and the take still
+  gets full feedback, with a short note.
+- **Privacy page** switches its wording automatically when AI coaching is on (what goes to Groq, Groq's retention
+  policy, nothing with your name or email).
+
 ## Unreleased — the coach reads answer-first takes correctly
 
 - **Bottom line by echo.** An answer that opens by restating the question ("The biggest risk on my project is…")

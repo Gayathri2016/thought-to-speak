@@ -100,13 +100,21 @@ export function sayItHtml(a, id) {
   const co = a.review?.coach || {};
   if (a.challenge_mode || !co.stronger_version) return "";
   const parts = co.script || null;
+  const ai = a.review?.source === "ai";
+  const spoken = (parts ? parts.filter((p) => !p.fill_in).map((p) => p.text).join(" ") : co.stronger_version) || "";
+  const secs = Math.max(5, Math.round(spoken.split(/\s+/).filter(Boolean).length / 2.5 / 5) * 5);   // ~150 wpm
+  const tag = (p) => p.yours ? (ai ? "from your words" : "your words") : p.fill_in ? "add this" : "suggested";
   const body = parts ? `<ol class="say-parts">${parts.map((p) => `<li class="${p.yours ? "yours" : p.fill_in ? "fill" : "added"}">
-      <span class="say-label">${esc(p.label)}<em>${p.yours ? "your words" : p.fill_in ? "add this" : "added"}</em></span>
+      <span class="say-label">${esc(p.label)}<em>${tag(p)}</em></span>
       <span class="say-text">${esc(p.text)}</span></li>`).join("")}</ol>`
     : `<p class="say-text">${esc(co.stronger_version)}</p>`;
+  const intro = !parts ? "Same facts, better shape."
+    : `Your answer in ${esc(a.framework_name || "the scenario")} order (about ${secs} seconds). ` +
+      (ai ? "Lines marked “suggested” fill a missing part — say them your way."
+          : "Lines marked “add this” are for you to fill in — say them your way.");
   return `<div class="fc-row say" id="${id}Say"><span class="fc-ico" aria-hidden="true">💬</span><div>
     <span class="eyebrow">Say it like this</span>
-    <p class="small muted say-intro">${parts ? `Your answer, corrected and put in the ${esc(a.framework_name || "scenario")} order. Lines marked “added” are suggestions — say them your way.` : "Same facts, better shape."}</p>
+    <p class="small muted say-intro">${intro}</p>
     ${body}
     ${id === "fc" ? grammarLine(a.review?.corrections) : ""}
     <div class="row gap-s wrap-row"><button class="ghost sm" id="${id}Hear">▶ Listen</button>

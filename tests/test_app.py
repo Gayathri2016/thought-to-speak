@@ -2397,3 +2397,111 @@ def test_new_grammar_rules_and_their_exceptions():
         "The biggest risk on the launch is that we have to finish in a week"
     assert fix("my manager wants to ship it friday").startswith("My manager wants to")  # people can want things
     assert fix("multi-checking multiple files") == "Checking multiple files"
+
+
+# ----------------------------------------------------------------------------- Groq: free Meta Llama coaching
+class _FakeGroq:
+    """Stands in for the OpenAI client pointed at Groq: records the call, returns canned output."""
+    calls = []
+    reply = "{}"
+    fail = None
+
+    def __init__(self, **kw):
+        _FakeGroq.calls.append(("client", kw))
+        outer = self
+
+        class _Completions:
+            def create(self, **kw):
+                _FakeGroq.calls.append(("chat", kw))
+                if _FakeGroq.fail:
+                    raise _FakeGroq.fail
+                msg = type("M", (), {"content": _FakeGroq.reply})
+                return type("R", (), {"choices": [type("C", (), {"message": msg})]})
+
+        class _Transcriptions:
+            def create(self, **kw):
+                _FakeGroq.calls.append(("stt", kw))
+                return {"text": " AI is a real catalyst for us. ", "words": [{"word": "AI", "start": 0.1, "end": 0.3}]}
+
+        self.chat = type("Chat", (), {"completions": _Completions()})()
+        self.audio = type("Audio", (), {"transcriptions": _Transcriptions()})()
+        del outer
+
+
+def _groq(monkeypatch, **env):
+    from coach import llm
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "auto")
+    for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(llm, "OpenAI", _FakeGroq)
+    _FakeGroq.calls, _FakeGroq.fail = [], None
+    llm.chat_budget._day, llm.chat_budget._used, llm.chat_budget._pause_until = None, 0, 0.0
+    return llm
+
+
+BLUF_AI = {"scores": {"structure": 70, "clarity": 66, "relevance": 88, "answer_quality": 60},
+           "review": {"coach": {"stronger_version": "x", "script": [
+               {"label": "Bottom line", "text": "The biggest risk is our one-week deadline.", "yours": True},
+               {"label": "Context", "text": "AI is a real catalyst for us, but results take several rounds.", "yours": True},
+               {"label": "Next step", "text": "I'd suggest we plan two days for review.", "yours": False}]}}}
+
+
+def test_groq_coaches_with_llama_and_labels_the_bluf_parts(monkeypatch):
+    from coach import analysis
+    llm = _groq(monkeypatch)
+    _FakeGroq.reply = json.dumps(BLUF_AI)
+    assert llm.active_provider() == "groq" and "llama" in llm.model_name("groq")
+    spec = {"framework": ["Bottom line", "Context", "Next step"], "name": "BLUF in 30"}
+    a = analysis.analyze("the biggest risk on my project wants to get the outcome within a week", "Leadership",
+                         "What's the biggest risk on your project?", False, 30, spec)
+    assert a["provider"].startswith("groq:")
+    client = next(kw for kind, kw in _FakeGroq.calls if kind == "client")
+    chat = next(kw for kind, kw in _FakeGroq.calls if kind == "chat")
+    assert client["base_url"] == "https://api.groq.com/openai/v1" and client["api_key"] == "test-key"
+    assert chat["response_format"] == {"type": "json_object"} and "llama" in chat["model"]
+    script = a["review"]["coach"]["script"]
+    assert [(p["label"], p["yours"]) for p in script] == [("Bottom line", True), ("Context", True), ("Next step", False)]
+    assert a["review"]["coach"]["stronger_version"].startswith("The biggest risk is our one-week deadline.")
+    ch = analysis.analyze("the biggest risk is the deadline", "Leadership", "What's the biggest risk?", True, 30, spec)
+    co = ch["review"]["coach"]                                               # challenge mode: no AI wording
+    assert not (co.get("stronger_version") or "").startswith("The biggest risk is our")
+    assert not any("one-week deadline" in p.get("text", "") for p in co.get("script") or [])
+
+
+def test_groq_daily_cap_and_rate_limit_fall_back_to_the_built_in_coach(monkeypatch):
+    from coach import analysis
+    llm = _groq(monkeypatch, AI_DAILY_TAKES="1")
+    _FakeGroq.reply = json.dumps(BLUF_AI)
+    assert analysis.analyze(STRONG, "Interview", PROMPT)["provider"].startswith("groq:")
+    second = analysis.analyze(STRONG, "Interview", PROMPT)                  # over today's cap: no call made
+    assert second["provider"] == "local:heuristic" and "used up" in second["warning"]
+    assert sum(1 for kind, _ in _FakeGroq.calls if kind == "chat") == 1
+    llm = _groq(monkeypatch, AI_DAILY_TAKES="50")
+    err = Exception("slow down"); err.status_code = 429
+    _FakeGroq.fail = err
+    assert analysis.analyze(STRONG, "Interview", PROMPT)["provider"] == "local:heuristic"
+    assert analysis.analyze(STRONG, "Interview", PROMPT)["provider"] == "local:heuristic"
+    assert sum(1 for kind, _ in _FakeGroq.calls if kind == "chat") == 1          # paused after the 429
+    assert llm.chat_budget.status()["used"] == 1
+
+
+def test_groq_whisper_transcribes_recordings(monkeypatch, tmp_path):
+    from coach import transcribe
+    _groq(monkeypatch, TRANSCRIBE_PROVIDER="auto")
+    monkeypatch.setattr(transcribe, "available", lambda: "groq")
+    transcribe.stt_budget._day, transcribe.stt_budget._used = None, 0
+    wav = tmp_path / "t.wav"
+    wav.write_bytes(b"RIFF")
+    out = transcribe.transcribe(str(wav))
+    assert out["text"] == "AI is a real catalyst for us." and out["source"].startswith("groq:whisper")
+    assert out["words"] == [{"word": "AI", "start": 0.1, "end": 0.3}]
+    stt = next(kw for kind, kw in _FakeGroq.calls if kind == "stt")
+    assert stt["response_format"] == "verbose_json" and "word" in stt["timestamp_granularities"]
+
+
+def test_privacy_page_says_where_words_go_for_both_setups(anon):
+    p = anon.get("/privacy").text
+    assert 'id="coachAI"' in p and "Groq" in p and 'id="coachLocal" hidden' in p
