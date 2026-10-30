@@ -175,6 +175,8 @@ def grammar_issues(text: str) -> list[dict]:
     toks = tokens(text)
     for a, b in zip(toks, toks[1:]):                       # a / an by sound, not spelling
         ph = pronunciation.phones(b)
+        if a in ("a", "an") and b in ("a", "an", "the"):     # "a, an API": a self-repair, not a grammar slip
+            continue
         if a in ("a", "an") and ph:
             vowel_start = ph[0].rstrip("012") in pronunciation.VOWELS
             if a == "a" and vowel_start:

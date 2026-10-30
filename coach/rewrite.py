@@ -188,6 +188,11 @@ def clean(words: list[str], mode: str = "", grammar_out: list | None = None,
     for kind, r in restarts:
         reasons.append(f"Removed the repeated “{r}”." if kind == "repeat" else
                        f"Removed the false start “{r}” — say it once, cleanly.")
+    for i in range(len(words) - 1):                  # "talk to a, an API" → "talk to an API"
+        if _key(words[i]) in {"a", "an", "the"} and _key(words[i + 1]) in {"a", "an", "the"}:
+            reasons.append(f"Removed the false start “{words[i].rstrip(',')}” — say it once, cleanly.")
+            words = words[:i] + words[i + 1:]
+            break
     words, obj = _restart_object(words)
     for r in obj:
         reasons.append(f"Removed the false start “{r}” — say it once, cleanly.")
@@ -502,6 +507,13 @@ def script(text: str, mode: str, spec: dict, cues: dict, prompt: str = "", fixed
         sents = out
     middle = labels[1:-1] if len(labels) > 2 else labels[1:]
     parts, used = [], set()
+    # the closing part keeps the sentence that does its job, so the middle can't swallow it
+    reserved = set()
+    if len(labels) > 2 and len(sents) > 1:
+        last = next((i for i, s in enumerate(sents) if i > 0 and
+                     any(c in " " + s.lower() + " " for c in cues.get(labels[-1], []))), None)
+        if last is not None:
+            reserved.add(last)
     for idx, lab in enumerate(labels):
         is_mid = lab in middle
         mine = [i for i, s in enumerate(sents) if i not in used and
@@ -509,7 +521,8 @@ def script(text: str, mode: str, spec: dict, cues: dict, prompt: str = "", fixed
         if idx == 0 and not mine and lab in ANSWER_FIRST and sents and echoes_prompt(sents[0], prompt):
             mine = [0]
         if is_mid and len(middle) == 1:               # one middle part (Detail): everything they said, in order
-            mine = [i for i in range(len(sents)) if i not in used and not _belongs_elsewhere(sents[i], labels, lab, cues)]
+            mine = [i for i in range(len(sents)) if i not in used and i not in reserved
+                    and not _belongs_elsewhere(sents[i], labels, lab, cues)]
         if is_mid and len(mine) > MAX_MIDDLE:         # long answers: keep the most informative, in order
             chosen = set(sorted(mine, key=lambda i: -_info(sents[i], text))[:MAX_MIDDLE])
             for i in sorted(chosen):                  # keep who "he / she / they" refers to

@@ -123,10 +123,12 @@ sudo nano /etc/thought-to-speak/env      # e.g. CONTACT_EMAIL=you@example.com, B
 sudo systemctl restart thought-to-speak
 ```
 
-### 9. Optional: free AI coaching (Groq, Meta Llama)
+### 9. Optional: free AI coaching (Groq)
 
 The built-in coach fixes grammar by rules. For a rewrite that understands what you meant — and for accurate
-transcripts of mic recordings — turn on Groq's free tier, which runs Meta's Llama 4 Scout and Whisper:
+transcripts of mic recordings — turn on Groq's free tier, which runs the open-weight `openai/gpt-oss-120b` model and Whisper.
+Groq retires models over time (its Llama models were shut down in 2026), so check console.groq.com/docs/deprecations
+if coaching ever says “NotFoundError”, and set `GROQ_MODEL` to the recommended replacement:
 
 1. Sign up at console.groq.com and create an API key. Treat it like a password: never paste it in chat or commit it.
 2. Optional but wise: in Groq's **Data Controls**, turn on **Zero Data Retention**.
@@ -141,7 +143,7 @@ transcripts of mic recordings — turn on Groq's free tier, which runs Meta's Ll
    ```
 
 The badge in the app changes to **AI coach**, and the Privacy page switches to the wording that says transcripts
-and recordings go to Groq. Free-tier limits (roughly 1,000 requests and 500k tokens a day for Llama 4 Scout,
+and recordings go to Groq. Free-tier limits (roughly 1,000 requests and 200k tokens a day for gpt-oss-120b,
 2,000 transcriptions a day) are protected by `AI_DAILY_TAKES` (300) and `TRANSCRIBE_DAILY` (500): past them, or
 whenever Groq says "rate limited", the built-in coach and the browser transcript take over automatically. To turn
 it off, empty `GROQ_API_KEY` and restart.

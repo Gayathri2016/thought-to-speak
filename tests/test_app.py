@@ -2399,7 +2399,7 @@ def test_new_grammar_rules_and_their_exceptions():
     assert fix("multi-checking multiple files") == "Checking multiple files"
 
 
-# ----------------------------------------------------------------------------- Groq: free Meta Llama coaching
+# ----------------------------------------------------------------------------- Groq: free open-weight model coaching
 class _FakeGroq:
     """Stands in for the OpenAI client pointed at Groq: records the call, returns canned output."""
     calls = []
@@ -2453,7 +2453,7 @@ def test_groq_coaches_with_llama_and_labels_the_bluf_parts(monkeypatch):
     from coach import analysis
     llm = _groq(monkeypatch)
     _FakeGroq.reply = json.dumps(BLUF_AI)
-    assert llm.active_provider() == "groq" and "llama" in llm.model_name("groq")
+    assert llm.active_provider() == "groq" and llm.model_name("groq") == "openai/gpt-oss-120b"
     spec = {"framework": ["Bottom line", "Context", "Next step"], "name": "BLUF in 30"}
     a = analysis.analyze("the biggest risk on my project wants to get the outcome within a week", "Leadership",
                          "What's the biggest risk on your project?", False, 30, spec)
@@ -2461,7 +2461,8 @@ def test_groq_coaches_with_llama_and_labels_the_bluf_parts(monkeypatch):
     client = next(kw for kind, kw in _FakeGroq.calls if kind == "client")
     chat = next(kw for kind, kw in _FakeGroq.calls if kind == "chat")
     assert client["base_url"] == "https://api.groq.com/openai/v1" and client["api_key"] == "test-key"
-    assert chat["response_format"] == {"type": "json_object"} and "llama" in chat["model"]
+    assert chat["response_format"] == {"type": "json_object"} and chat["model"] == "openai/gpt-oss-120b"
+    assert chat["reasoning_effort"] == "low"
     script = a["review"]["coach"]["script"]
     assert [(p["label"], p["yours"]) for p in script] == [("Bottom line", True), ("Context", True), ("Next step", False)]
     assert a["review"]["coach"]["stronger_version"].startswith("The biggest risk is our one-week deadline.")
@@ -2505,3 +2506,20 @@ def test_groq_whisper_transcribes_recordings(monkeypatch, tmp_path):
 def test_privacy_page_says_where_words_go_for_both_setups(anon):
     p = anon.get("/privacy").text
     assert 'id="coachAI"' in p and "Groq" in p and 'id="coachLocal" hidden' in p
+
+
+
+def test_article_self_repair_and_closing_part_keeps_its_sentence():
+    from pathlib import Path
+    from coach import analysis, language, rewrite
+    take = ("Think of this. When you ask for employee details, you talk to a, an API and say give me those details. "
+            "The API gives you the salary for that employee. You use that for payroll or to send a report to the tax office.")
+    fixed = rewrite.corrected(take)
+    assert "talk to an API" in fixed["full"] and "a, an" not in fixed["full"]
+    assert not any("an an" in (g.get("suggestion") or "") for g in language.grammar_issues(take))
+    spec = {"framework": ["Big idea", "Concrete example", "Why it matters"], "name": "Idea · Example · Why it matters"}
+    a = analysis.analyze(take, "Technical Explanation", "Explain what an API is to a new marketing hire.", False, 40, spec)
+    parts = {p["label"]: p["status"] for p in a["review"]["breakdown"]["parts"]}
+    script = {p["label"]: p.get("yours") for p in a["review"]["coach"]["script"]}
+    if parts["Why it matters"] == "present":                     # what the review credits, the rewrite shows
+        assert script["Why it matters"] is True

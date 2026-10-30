@@ -27,7 +27,7 @@ class LLMUnavailable(Exception):
 
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"   # Meta Llama 4 Scout: free tier, ~500k tokens/day
+GROQ_MODEL = "openai/gpt-oss-120b"   # open-weight; Groq retired its Llama models in 2026 (see docs/deprecations)
 
 
 class Budget:
@@ -143,10 +143,11 @@ def complete_json(system: str, user: str, max_tokens: int = 2000) -> tuple[dict,
         if not chat_budget.take():
             raise LLMUnavailable("Today's free AI coaching is used up — the built-in coach is covering.")
         try:
+            extra = {"reasoning_effort": "low"} if "gpt-oss" in model_name("groq") else {}   # fewer hidden tokens
             r = groq_client(timeout).chat.completions.create(
                 model=model_name("groq"), max_tokens=min(max_tokens, 4000), temperature=0.3,
                 response_format={"type": "json_object"},
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], **extra)
         except Exception as e:
             if _is_rate_limit(e):
                 chat_budget.rate_limited()
