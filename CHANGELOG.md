@@ -13,6 +13,12 @@
   gets full feedback, with a short note.
 - "a, an API" is treated as a self-repair (the false start is removed) instead of flagged as "an an";
   the closing part of a framework keeps the sentence that does its job instead of the middle part taking it.
+- **"Say it like this" from the AI, every time:** the rewrite is now required in the AI prompt (p9), and if a
+  model still leaves it out, one short follow-up request asks for just the labelled parts. "From your words" /
+  "suggested" appear only on an AI-written version.
+- **Paraphrased quotes keep their part:** when the AI paraphrases a quote, the review shows the sentence you
+  actually said (most of the same words) instead of downgrading the part to "couldn't match a sentence".
+  "Your whole answer, corrected" falls back to the built-in version instead of showing nothing.
 - **Privacy page** switches its wording automatically when AI coaching is on (what goes to Groq, Groq's retention
   policy, nothing with your name or email).
 

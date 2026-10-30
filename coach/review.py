@@ -515,7 +515,7 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
                 r["coach"]["stronger_version"] = co["stronger_version"].strip()
                 r["coach"]["script"] = None            # the AI's version replaces the built-in, part-labelled one
             if script and not challenge:               # …and the AI's own part labels, when it gives them
-                r["coach"]["script"] = script
+                r["coach"]["script"], r["coach"]["script_source"] = script, "ai"
                 r["coach"]["stronger_version"] = " ".join(x["text"] for x in script)
         cr = data.get("corrections")
         if isinstance(cr, dict) and isinstance(cr.get("items"), list):
@@ -529,7 +529,7 @@ def merge_llm_review(local: dict, data: dict | None, challenge: bool, mode: str)
             if items or cr.get("corrected_full"):
                 r["corrections"] = {"items": items, "source": "ai", "grammar": (local.get("corrections") or {}).get("grammar") or [],
                                     "corrected_full": (str(cr.get("corrected_full")).strip() or None)
-                                    if cr.get("corrected_full") else None}
+                                    if cr.get("corrected_full") else (local.get("corrections") or {}).get("corrected_full")}
         me = data.get("mentor") or {}
         if isinstance(me, dict):
             for key in ("pattern", "improving", "habit"):

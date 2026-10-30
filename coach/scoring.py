@@ -20,7 +20,7 @@ import hashlib
 import json
 
 HEURISTIC_VERSION = "h11"       # h9: everyday scenarios, hesitations · h10: off-topic cap, a.m./p.m. sentences · h11: an answer that echoes the question is the bottom line
-AI_PROMPT_VERSION = "p8"        # SYSTEM_PROMPT schema/rubric for AI scoring
+AI_PROMPT_VERSION = "p9"        # SYSTEM_PROMPT schema/rubric for AI scoring
 PRONUNCIATION_VERSION = "r1"    # read-aloud word alignment
 LEGACY = "legacy"               # takes saved before provenance was recorded
 

@@ -2523,3 +2523,38 @@ def test_article_self_repair_and_closing_part_keeps_its_sentence():
     script = {p["label"]: p.get("yours") for p in a["review"]["coach"]["script"]}
     if parts["Why it matters"] == "present":                     # what the review credits, the rewrite shows
         assert script["Why it matters"] is True
+
+
+def test_ai_rewrite_is_requested_separately_when_the_main_reply_skips_it(monkeypatch):
+    """gpt-oss sometimes leaves out "Say it like this": a short second request fills it; the label says AI."""
+    from coach import analysis
+    _groq(monkeypatch)
+    no_script = {"scores": {"structure": 45, "clarity": 70, "relevance": 80, "answer_quality": 60},
+                 "review": {"breakdown": [{"label": "Definition", "status": "present",
+                                           "quote": "an agent harness is many agents in a loop", "note": "clear"}]}}
+    script = {"script": [{"label": "Definition", "text": "An agent harness runs several AI agents in a loop.", "yours": True},
+                         {"label": "Example / analogy", "text": "Think of a store where each clerk has one job.", "yours": True},
+                         {"label": "How it works", "text": "Your request goes to one agent, which hands parts to others.", "yours": True},
+                         {"label": "Trade-offs", "text": "It's more capable, but slower and harder to debug.", "yours": False}]}
+    calls = []
+
+    def fake_complete(system, user, max_tokens=2000):
+        calls.append(system[:40])
+        return (no_script if len(calls) == 1 else script), "groq:openai/gpt-oss-120b"
+    from coach import llm
+    monkeypatch.setattr(llm, "complete_json", fake_complete)
+    spec = {"framework": ["Definition", "Example / analogy", "How it works", "Trade-offs"], "name": "Technical Explanation",
+            "target_seconds": [60, 120]}
+    take = ("Agent harness is a multiple agents forming as a loop to complete the task. It is like a store where "
+            "several groups of people work together. You give a prompt and it goes through many agents to get the answer.")
+    a = analysis.analyze(take, "Technical Explanation", "Explain what an AI agent harness is.", False, 60, spec)
+    co = a["review"]["coach"]
+    assert len(calls) == 2 and co["script_source"] == "ai"
+    assert [p["yours"] for p in co["script"]] == [True, True, True, False]
+    assert co["stronger_version"].startswith("An agent harness runs several AI agents")
+    # the paraphrased quote is matched to the sentence she really said, and the part stays credited
+    part = a["review"]["breakdown"]["parts"][0]
+    assert part["status"] == "present" and part["quote"].startswith("Agent harness is a multiple agents")
+    assert a["review"]["corrections"]["corrected_full"]                       # never an empty "whole answer"
+    ch = analysis.analyze(take, "Technical Explanation", "Explain it.", True, 60, spec)
+    assert len(calls) == 3                                                    # challenge mode: no rewrite request

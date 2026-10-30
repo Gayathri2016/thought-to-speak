@@ -100,7 +100,7 @@ export function sayItHtml(a, id) {
   const co = a.review?.coach || {};
   if (a.challenge_mode || !co.stronger_version) return "";
   const parts = co.script || null;
-  const ai = a.review?.source === "ai";
+  const ai = co.script_source === "ai";
   const spoken = (parts ? parts.filter((p) => !p.fill_in).map((p) => p.text).join(" ") : co.stronger_version) || "";
   const secs = Math.max(5, Math.round(spoken.split(/\s+/).filter(Boolean).length / 2.5 / 5) * 5);   // ~150 wpm
   const tag = (p) => p.yours ? (ai ? "from your words" : "your words") : p.fill_in ? "add this" : "suggested";
@@ -241,7 +241,7 @@ export function renderReview(a) {
       <div class="rv-h"><span class="rv-who">🧱 Your answer, part by part</span><span class="small muted">${esc(a.framework_name)}</span></div>
       <div class="rv-parts">${parts.map((p) => `<div class="rv-part ${esc(p.status)}">
         <span class="ico" aria-label="${esc(p.status)}">${icon[p.status] || "~"}</span><b>${esc(p.label)}</b>
-        <span>${p.quote ? q(p.quote) + tsb(p) : `<span class="muted">${p.status === "weak" ? "Unclear — couldn't match a sentence" : "Not in your answer"}</span>`}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ""}</span></div>`).join("")}</div>
+        <span>${p.quote ? q(p.quote) + tsb(p) : `<span class="muted">${p.status === "weak" ? "Partly there" : "Not in your answer"}</span>`}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ""}</span></div>`).join("")}</div>
       ${r.breakdown?.order_note ? `<p class="small rv-note">↕ ${esc(r.breakdown.order_note)}</p>` : ""}
     </section>
 

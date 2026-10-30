@@ -114,6 +114,28 @@ def check(quote: str | None, transcript: str, words: list[dict] | None = None) -
             "end": ts[1] if ts else None}
 
 
+_SENTS = re.compile(r"(?<=[.!?])\s+")
+_LIGHT = {"the", "a", "an", "and", "or", "to", "of", "in", "on", "is", "are", "was", "it", "that", "this", "so",
+          "for", "with", "as", "be"}
+
+
+def nearest_sentence(quote: str | None, transcript: str, words: list[dict] | None = None) -> dict | None:
+    """A paraphrased quote → the transcript sentence it plainly refers to (most of its content words, in one
+    sentence). Shows the speaker's real words instead of dropping the part. None when nothing clearly matches."""
+    q = {t for t in _toks(quote) if t not in _LIGHT}
+    if len(q) < 3:
+        return None
+    best, score = None, 0.0
+    for sent in _SENTS.split(transcript or ""):
+        st = set(_toks(sent))
+        r = len(q & st) / len(q)
+        if r > score:
+            best, score = sent.strip(), r
+    if best and score >= 0.6:
+        return check(best, transcript, words)
+    return None
+
+
 _QUOTED = re.compile(r"[“\"]([^”\"]{2,200})[”\"]")
 
 
@@ -161,7 +183,7 @@ def validate_review(rv: dict, transcript: str, words: list[dict] | None, challen
     parts = []
     for p in bd.get("parts") or []:
         if p.get("quote"):
-            e = check(p["quote"], transcript, words)
+            e = check(p["quote"], transcript, words) or nearest_sentence(p["quote"], transcript, words)
             if e:
                 p = {**p, **e}
             else:

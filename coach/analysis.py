@@ -315,7 +315,8 @@ def heuristic_feedback(mode: str, m: dict, scores: dict, fmap: list[dict], chall
 
 
 SYSTEM_PROMPT = """You are Thought → Speak, a communication coach for spontaneous spoken answers.
-Your job is to make the speaker independent of AI, so you diagnose and coach; you do not perform for them.
+Your job is to make the speaker independent of AI: diagnose and coach, and (outside challenge_mode) show them
+their own answer said well so they can re-speak it — never a polished speech they couldn't have given.
 The transcript comes from speech-to-text: ignore missing punctuation and capitalization, and do not penalize
 obvious recognition errors. When a word is clearly a mishearing and the intended word is obvious from context
 (e.g. "music catalyst" where "AI is a catalyst" fits), use the intended word in corrected text, stronger_version
@@ -375,6 +376,8 @@ Delivery/filler metrics are computed separately; do not score them.
 
 structure_map: one entry per framework label given, in order.
 Never invent facts the speaker did not say.
+When challenge_mode is false, review.coach.stronger_version, review.coach.script and
+review.corrections.corrected_full are REQUIRED — fill them every time.
 If challenge_mode is true: suggested_outline MUST be [] and you must NOT write any replacement
 sentences, sample phrasing, or rewritten answer anywhere. Coach only with observations, hints, and questions.
 If challenge_mode is false: suggested_outline may contain 3-5 short skeleton bullets ("Label: idea")
@@ -400,7 +403,7 @@ REVIEW rules — the review is the heart of the feedback:
   stronger_version: when challenge_mode is false, rewrite THEIR answer at its best — keep their facts, story
   and voice, invent nothing, about the target length. When challenge_mode is true, return "" and give no
   sample wording anywhere.
-  script: the same stronger_version, one entry per framework label, in framework order, each 1-3 short
+  script (REQUIRED when challenge_mode is false — never omit it): the same stronger_version, one entry per framework label, in framework order, each 1-3 short
   spoken sentences. "yours": true when the line is built from what they said; false when the part was missing
   and you suggest a line for it — a suggestion grounded in their situation (e.g. a sensible next step), never a
   made-up fact, number or past event. Aim for the target length when spoken. [] in challenge_mode.
@@ -440,6 +443,28 @@ def _llm_feedback(text, mode, prompt, challenge, m, spec, voice=None, digest=Non
         f"{_voice_line(voice)}\n{_history_line(digest or {})}\n\nTranscript:\n\"\"\"{text}\"\"\""
     )
     return llm.complete_json(SYSTEM_PROMPT, user, max_tokens=4000)
+
+
+REWRITE_PROMPT = """You rewrite one spoken practice answer so the speaker can say it better on the next take.
+Return ONLY a JSON object: {"script": [{"label": str, "text": str, "yours": bool}]}
+- One entry per framework label given, in that order. Each "text" is 1-3 short sentences, easy to say out loud.
+- Keep the speaker's own facts, examples and voice; fix grammar and wording; make the point land.
+- The transcript comes from speech-to-text: when a word is clearly a mishearing, use the intended word.
+- "yours": true when the line is built from what they said. If a part is missing, suggest one line for it with
+  "yours": false — a sensible suggestion grounded in their situation, never an invented fact, number or event.
+- Aim for the target length when spoken (about 150 words per minute)."""
+
+
+def _llm_script(text: str, prompt: str, spec: dict) -> list[dict]:
+    lo, hi = (list(spec.get("target_seconds") or []) + [45, 75])[:2]
+    user = (f"Question: {prompt or '(free practice)'}\nFramework ({spec.get('name')}): {spec['framework']}\n"
+            f"Target length: {lo}-{hi} seconds\n\nTranscript:\n\"\"\"{text}\"\"\"")
+    raw, _ = llm.complete_json(REWRITE_PROMPT, user, max_tokens=1500)
+    labels = list(spec["framework"])
+    out = [{"label": str(x.get("label") or "").strip(), "text": str(x.get("text") or "").strip()[:600],
+            "yours": x.get("yours") is not False} for x in (raw.get("script") or []) if isinstance(x, dict)]
+    out = [x for x in out if x["label"] in labels and x["text"]]
+    return out if len(out) >= max(2, len(labels) - 1) else []
 
 
 def _str_list(v, limit):
@@ -606,6 +631,15 @@ def analyze(text: str, mode: str, prompt: str = "", challenge: bool = False,
 
     rv = review_mod.local_review(text, mode, spec, m, scores, FRAMEWORK_CUES, history, prompt)
     rv = review_mod.merge_llm_review(rv, llm_review, challenge, mode)
+    if llm_review is not None and not challenge and spec.get("framework") and \
+            (rv.get("coach") or {}).get("script_source") != "ai":
+        try:                                          # the AI skipped "Say it like this": ask for just that
+            script = _llm_script(text, prompt, spec)
+            if script:
+                rv["coach"]["script"], rv["coach"]["script_source"] = script, "ai"
+                rv["coach"]["stronger_version"] = " ".join(x["text"] for x in script)
+        except Exception as e:  # noqa: BLE001 — the built-in version stays
+            log.info("AI rewrite request failed, keeping the built-in version: %s", e)
     rv = evidence.validate_review(rv, text, words, challenge)   # quotes must be in the transcript
     focus = evidence.focus(rv, fb, tuple(spec["target_seconds"]))
 
